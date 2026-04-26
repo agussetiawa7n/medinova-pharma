@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh auth *)",
+      "Bash(git init *)",
+      "Bash(winget install *)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" auth status)",
+      "Bash(\"C:/Program Files \\(x86\\)/GitHub CLI/gh.exe\" auth status)",
+      "Bash(where gh *)",
+      "PowerShell(gh auth status 2>&1)",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
+      "Bash(gh repo *)",
+      "Bash(git add *)"
+    ]
+  }
+}

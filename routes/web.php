@@ -1,0 +1,90 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\HomeController;
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\CartController;
+use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\OrderController;
+use App\Http\Controllers\WalletController;
+use App\Http\Controllers\WishlistController;
+use App\Http\Controllers\PrescriptionController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PageController;
+use App\Http\Controllers\ContactController;
+use App\Http\Controllers\AddressController;
+use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\RegisterController;
+
+// --- Public ---
+Route::get('/', [HomeController::class, 'index'])->name('home');
+
+// Products
+Route::get('/products', [ProductController::class, 'index'])->name('products.index');
+Route::get('/products/{slug}', [ProductController::class, 'show'])->name('products.show');
+
+// Static pages
+Route::get('/contact', [ContactController::class, 'show'])->name('contact');
+Route::post('/contact', [ContactController::class, 'store'])->name('contact.store');
+Route::get('/page/{slug}', [PageController::class, 'show'])->name('page');
+
+// Auth
+Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login')->middleware('guest');
+Route::post('/login', [LoginController::class, 'login'])->middleware('guest');
+Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
+Route::get('/register', [RegisterController::class, 'showRegistrationForm'])->name('register')->middleware('guest');
+Route::post('/register', [RegisterController::class, 'register'])->middleware('guest');
+
+// --- Cart (guest-accessible) ---
+Route::get('/cart', [CartController::class, 'index'])->name('cart');
+Route::post('/cart/coupon', [CartController::class, 'applyCoupon'])->name('cart.coupon');
+Route::delete('/cart/coupon', [CartController::class, 'removeCoupon'])->name('cart.coupon.remove');
+
+// --- AJAX endpoints ---
+Route::prefix('ajax')->name('ajax.')->group(function () {
+    Route::get('/products', [ProductController::class, 'ajaxIndex'])->name('products');
+    Route::get('/cart/count', [CartController::class, 'count'])->name('ajax.cart.count');
+    Route::post('/cart/add', [CartController::class, 'add'])->name('ajax.cart.add');
+    Route::patch('/cart/item/{id}', [CartController::class, 'update'])->name('ajax.cart.update');
+    Route::delete('/cart/item/{id}', [CartController::class, 'remove'])->name('ajax.cart.remove');
+    Route::post('/wishlist/toggle', [WishlistController::class, 'toggle'])->name('ajax.wishlist.toggle');
+});
+
+// --- Authenticated ---
+Route::middleware('auth')->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    // Checkout
+    Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout');
+    Route::post('/checkout', [CheckoutController::class, 'store'])->name('checkout.store');
+    Route::get('/checkout/success/{order}', [CheckoutController::class, 'success'])->name('checkout.success');
+    Route::post('/checkout/razorpay/callback', [CheckoutController::class, 'razorpayCallback'])->name('checkout.razorpay.callback');
+    Route::get('/checkout/stripe/success', [CheckoutController::class, 'stripeSuccess'])->name('checkout.stripe.success');
+    Route::get('/checkout/paypal/success', [CheckoutController::class, 'paypalSuccess'])->name('checkout.paypal.success');
+    Route::get('/checkout/paypal/cancel', [CheckoutController::class, 'paypalCancel'])->name('checkout.paypal.cancel');
+
+    // Orders
+    Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
+    Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
+
+    // Wallet
+    Route::get('/wallet', [WalletController::class, 'index'])->name('wallet');
+    Route::post('/wallet/topup', [WalletController::class, 'topup'])->name('wallet.topup');
+    Route::post('/wallet/topup/callback', [WalletController::class, 'topupCallback'])->name('wallet.topup.callback');
+
+    // Wishlist
+    Route::get('/wishlist', [WishlistController::class, 'index'])->name('wishlist');
+
+    // Addresses
+    Route::get('/addresses',                  [AddressController::class, 'index'])->name('addresses.index');
+    Route::get('/addresses/create',           [AddressController::class, 'create'])->name('addresses.create');
+    Route::post('/addresses',                 [AddressController::class, 'store'])->name('addresses.store');
+    Route::get('/addresses/{address}/edit',   [AddressController::class, 'edit'])->name('addresses.edit');
+    Route::put('/addresses/{address}',        [AddressController::class, 'update'])->name('addresses.update');
+    Route::delete('/addresses/{address}',     [AddressController::class, 'destroy'])->name('addresses.destroy');
+
+    // Prescriptions
+    Route::get('/prescriptions', [PrescriptionController::class, 'index'])->name('prescriptions.index');
+    Route::post('/prescriptions', [PrescriptionController::class, 'store'])->name('prescriptions.store');
+    Route::get('/prescriptions/{prescription}/file', [PrescriptionController::class, 'file'])->name('prescriptions.file');
+});
