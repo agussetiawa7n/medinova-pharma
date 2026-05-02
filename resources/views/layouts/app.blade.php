@@ -11,15 +11,28 @@
 
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
 
-    {{-- Glowify base stylesheets --}}
+    {{-- Preconnect for external domains --}}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    {{-- Google Fonts (Barlow + Prompt) — direct link, not @import --}}
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" media="print" onload="this.media='all';this.onload=null">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap"></noscript>
+
+    {{-- Critical: Bootstrap grid + utilities needed for layout --}}
     <link rel="stylesheet" href="{{ asset('assets/glowify/css/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/glowify/css/fontawesome.min.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/glowify/css/style.css') }}">
+
+    {{-- Deferred: template styles + icons (non-blocking) --}}
+    <link rel="stylesheet" href="{{ asset('assets/glowify/css/style.css') }}" media="print" onload="this.media='all';this.onload=null">
+    <link rel="stylesheet" href="{{ asset('assets/glowify/css/fontawesome.min.css') }}" media="print" onload="this.media='all';this.onload=null">
+    <noscript>
+        <link rel="stylesheet" href="{{ asset('assets/glowify/css/style.css') }}">
+        <link rel="stylesheet" href="{{ asset('assets/glowify/css/fontawesome.min.css') }}">
+    </noscript>
 
     {{-- Pharma overrides + Vite (Swiper + Bootstrap JS + Alpine + Livewire) --}}
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
-    @livewireStyles
     @stack('head')
 </head>
 <body>
@@ -69,7 +82,6 @@
     {{-- ═══════════ Footer ═══════════ --}}
     @include('partials.footer')
 
-    @livewireScriptConfig
     @stack('scripts')
 </body>
 </html>

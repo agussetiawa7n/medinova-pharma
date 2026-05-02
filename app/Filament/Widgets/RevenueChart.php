@@ -27,7 +27,7 @@ class RevenueChart extends ChartWidget
 
         return [
             'datasets' => [[
-                'label'           => 'Revenue (₹)',
+                'label'           => 'Revenue ($)',
                 'data'            => $data->pluck('revenue')->toArray(),
                 'borderColor'     => '#FF647B',
                 'backgroundColor' => 'rgba(255, 100, 123, 0.15)',

@@ -6,7 +6,6 @@ use App\Enums\PrescriptionStatus;
 use App\Models\Prescription;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
 
 class PrescriptionService
 {
@@ -25,30 +24,23 @@ class PrescriptionService
         ]);
     }
 
-    public function approve(Prescription $prescription, string $adminNotes = ''): void
+    public function review(Prescription $prescription, PrescriptionStatus $status, ?string $adminNotes = null): void
     {
         $prescription->update([
-            'status'      => PrescriptionStatus::Approved,
+            'status'      => $status,
             'admin_notes' => $adminNotes,
             'reviewed_by' => Auth::id(),
             'reviewed_at' => now(),
         ]);
+    }
+
+    public function approve(Prescription $prescription, string $adminNotes = ''): void
+    {
+        $this->review($prescription, PrescriptionStatus::Approved, $adminNotes);
     }
 
     public function reject(Prescription $prescription, string $adminNotes = ''): void
     {
-        $prescription->update([
-            'status'      => PrescriptionStatus::Rejected,
-            'admin_notes' => $adminNotes,
-            'reviewed_by' => Auth::id(),
-            'reviewed_at' => now(),
-        ]);
-    }
-
-    public function getSecureUrl(Prescription $prescription): string
-    {
-        /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
-        $disk = Storage::disk('private');
-        return $disk->temporaryUrl($prescription->file_path, now()->addMinutes(30));
+        $this->review($prescription, PrescriptionStatus::Rejected, $adminNotes);
     }
 }

@@ -36,7 +36,7 @@
                     contact: "{{ $payload['prefill_phone'] ?? '' }}"
                 },
                 handler: function (response) {
-                    fetch("{{ route('checkout.razorpay.callback') }}", {
+                    fetch("{{ route('checkout.callback', 'razorpay') }}", {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json', 'X-CSRF-TOKEN': window.csrfToken},
                         body: JSON.stringify({
@@ -65,7 +65,7 @@
             <div id="stripe-errors" class="text-red-500 text-sm mb-4 hidden"></div>
             <div id="card-element" class="border border-gray-200 rounded-xl px-4 py-3 mb-6"></div>
             <button id="stripe-submit" class="btn-primary w-full py-3 font-bold">
-                Pay ₹{{ number_format($order->grand_total, 2) }}
+                Pay ${{ number_format($order->grand_total, 2) }}
             </button>
         </div>
 
@@ -85,7 +85,7 @@
                     document.getElementById('stripe-errors').textContent = result.error.message;
                     document.getElementById('stripe-errors').classList.remove('hidden');
                 } else if (result.paymentIntent.status === 'succeeded') {
-                    window.location.href = "{{ route('checkout.stripe.success') }}?order_id={{ $order->id }}";
+                    window.location.href = "{{ route('checkout.callback', 'stripe') }}?payment_intent=" + result.paymentIntent.id;
                 }
             });
         });

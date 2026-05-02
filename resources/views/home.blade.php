@@ -9,15 +9,11 @@
 {{-- HERO (Glowify cs_hero cs_style_2)                   --}}
 {{-- ══════════════════════════════════════════════════ --}}
 @php
-    $primaryHero = $heroBanners->first();
-    // Prefer a real uploaded image; fall back to Glowify hero_bg_2 for placeholder URLs
-    $heroBgCandidate = $primaryHero?->image_url;
-    $isPlaceholder   = $heroBgCandidate && str_contains($heroBgCandidate, 'placehold.co');
-    $heroBg    = (!$heroBgCandidate || $isPlaceholder) ? asset('assets/glowify/images/hero_bg_2.jpeg') : $heroBgCandidate;
-    $heroTitle = $primaryHero?->title    ?? 'Your Health, Our Priority';
-    $heroSub   = $primaryHero?->subtitle ?? 'Genuine medicines, vitamins and wellness essentials delivered safely to your doorstep. Trusted by millions across India.';
-    $heroCta   = $primaryHero?->button_text ?? 'Shop Now';
-    $heroUrl   = $primaryHero?->button_url  ?? route('products.index');
+    $heroBg    = \App\Models\Setting::get('home.hero_background') ?: asset('assets/glowify/images/hero_bg_2.jpeg');
+    $heroTitle = \App\Models\Setting::get('home.hero_title') ?: 'Your Health, Our Priority';
+    $heroSub   = \App\Models\Setting::get('home.hero_subtitle') ?: 'Genuine medicines, vitamins and wellness essentials delivered safely to your doorstep.';
+    $heroCta   = \App\Models\Setting::get('home.hero_button_text') ?: 'Shop Now';
+    $heroUrl   = \App\Models\Setting::get('home.hero_button_url') ?: route('products.index');
 @endphp
 
 <div class="cs_hero cs_style_2 cs_bg_filed" data-src="{{ $heroBg }}">
@@ -43,6 +39,7 @@
 {{-- ══════════════════════════════════════════════════ --}}
 {{-- FEATURE STRIP (Glowify cs_grid_5_column)            --}}
 {{-- ══════════════════════════════════════════════════ --}}
+@if($sections['show_feature_strip'])
 <div class="cs_height_80 cs_height_lg_60"></div>
 <div class="container">
     <div class="cs_grid_5_column cs_type_1">
@@ -64,11 +61,12 @@
     </div>
 </div>
 <div class="cs_height_80 cs_height_lg_60"></div>
+@endif
 
 {{-- ══════════════════════════════════════════════════ --}}
 {{-- SHOP BY CATEGORY                                    --}}
 {{-- ══════════════════════════════════════════════════ --}}
-@if($categories->isNotEmpty())
+@if($sections['show_categories'] && $categories->isNotEmpty())
     <section style="padding:64px 0;">
         <div class="container-xxl px-3 px-md-4">
             <div class="mn-section-head" data-aos="fade-up">
@@ -99,7 +97,7 @@
 {{-- ══════════════════════════════════════════════════ --}}
 {{-- FLASH SALE (Swiper slider)                          --}}
 {{-- ══════════════════════════════════════════════════ --}}
-@if($flashSale->isNotEmpty())
+@if($sections['show_flash_sale'] && $flashSale->isNotEmpty())
     <section style="padding:32px 0 64px; background:linear-gradient(180deg, #fff 0%, #F8FAFB 100%);">
         <div class="container-xxl px-3 px-md-4">
             <div class="mn-section-head" data-aos="fade-up">
@@ -126,24 +124,25 @@
 @endif
 
 {{-- ══════════════════════════════════════════════════ --}}
-{{-- PROMO BANNERS                                       --}}
+{{-- PROMO BANNERS (dynamic from admin)                   --}}
 {{-- ══════════════════════════════════════════════════ --}}
-@if($promoBanners->isNotEmpty())
+@php $promoBannerItems = json_decode(\App\Models\Setting::get('home.promo_banners', '[]'), true) ?: []; @endphp
+@if($sections['show_promo_banners'] && count($promoBannerItems))
     <section style="padding:8px 0 56px;">
         <div class="container-xxl px-3 px-md-4">
             <div class="row g-3 g-md-4">
-                @foreach($promoBanners->take(3) as $banner)
-                    <div class="col-12 col-md-{{ $promoBanners->count() === 1 ? '12' : ($promoBanners->count() === 2 ? '6' : '4') }}" data-aos="fade-up" data-aos-delay="{{ $loop->index * 80 }}">
-                        <a href="{{ $banner->button_url ?? '#' }}" class="mn-promo text-decoration-none"
-                           @if($banner->image) style="background-image:url('{{ $banner->image_url }}');" @endif>
+                @foreach(array_slice($promoBannerItems, 0, 3) as $banner)
+                    <div class="col-12 col-md-{{ count($promoBannerItems) === 1 ? '12' : (count($promoBannerItems) === 2 ? '6' : '4') }}" data-aos="fade-up" data-aos-delay="{{ $loop->index * 80 }}">
+                        <a href="{{ $banner['button_url'] ?? '#' }}" class="mn-promo text-decoration-none"
+                           @if(!empty($banner['image'])) style="background-image:url('{{ \Illuminate\Support\Facades\Storage::url($banner['image']) }}');" @endif>
                             <div class="mn-promo-inner">
-                                @if($banner->badge_text)
-                                    <span class="badge mb-2" style="background:#fff; color:#e61f7f; font-weight:700; font-size:12px;">{{ $banner->badge_text }}</span>
+                                @if(!empty($banner['badge_text']))
+                                    <span class="badge mb-2" style="background:#fff; color:#e61f7f; font-weight:700; font-size:12px;">{{ $banner['badge_text'] }}</span>
                                 @endif
-                                <h3>{{ $banner->title }}</h3>
-                                @if($banner->subtitle)<p>{{ $banner->subtitle }}</p>@endif
-                                @if($banner->button_text)
-                                    <span class="btn btn-pharma btn-sm">{{ $banner->button_text }} <i class="fa-solid fa-arrow-right ms-1"></i></span>
+                                <h3>{{ $banner['title'] ?? '' }}</h3>
+                                @if(!empty($banner['subtitle']))<p>{{ $banner['subtitle'] }}</p>@endif
+                                @if(!empty($banner['button_text']))
+                                    <span class="btn btn-pharma btn-sm">{{ $banner['button_text'] }} <i class="fa-solid fa-arrow-right ms-1"></i></span>
                                 @endif
                             </div>
                         </a>
@@ -157,7 +156,7 @@
 {{-- ══════════════════════════════════════════════════ --}}
 {{-- FEATURED PRODUCTS                                   --}}
 {{-- ══════════════════════════════════════════════════ --}}
-@if($featuredProducts->isNotEmpty())
+@if($sections['show_featured'] && $featuredProducts->isNotEmpty())
     <section style="padding:48px 0;">
         <div class="container-xxl px-3 px-md-4">
             <div class="mn-section-head" data-aos="fade-up">
@@ -182,6 +181,7 @@
 {{-- ══════════════════════════════════════════════════ --}}
 {{-- RX UPLOAD CTA                                       --}}
 {{-- ══════════════════════════════════════════════════ --}}
+@if($sections['show_prescription_cta'])
 <section style="padding:40px 0;">
     <div class="container-xxl px-3 px-md-4">
         <div class="position-relative overflow-hidden p-4 p-md-5"
@@ -209,11 +209,12 @@
         </div>
     </div>
 </section>
+@endif
 
 {{-- ══════════════════════════════════════════════════ --}}
 {{-- NEW ARRIVALS (Swiper)                               --}}
 {{-- ══════════════════════════════════════════════════ --}}
-@if($newArrivals->isNotEmpty())
+@if($sections['show_new_arrivals'] && $newArrivals->isNotEmpty())
     <section style="padding:48px 0;">
         <div class="container-xxl px-3 px-md-4">
             <div class="mn-section-head" data-aos="fade-up">
@@ -240,40 +241,50 @@
 @endif
 
 {{-- ══════════════════════════════════════════════════ --}}
-{{-- BANNER SECTION (cs_banner cs_style_4 + cs_style_5)  --}}
+{{-- PROMO GRID (dynamic 2-column, from admin)            --}}
 {{-- ══════════════════════════════════════════════════ --}}
+@php
+    $promoLeft  = json_decode(\App\Models\Setting::get('home.promo_left_banner', '{}'), true) ?: [];
+    $promoRight = json_decode(\App\Models\Setting::get('home.promo_right_banner', '{}'), true) ?: [];
+    $hasPromoGrid = !empty($promoLeft['title']) || !empty($promoRight['title']);
+@endphp
+@if($hasPromoGrid)
 <section data-aos="fade-up">
     <div class="container">
         <div class="row cs_gap_y_20">
-            <div class="col-lg-6">
-                <a href="{{ route('products.index', ['on_sale' => 1]) }}"
+            @if(!empty($promoLeft['title']))
+            <div class="{{ !empty($promoRight['title']) ? 'col-lg-6' : 'col-12' }}">
+                <a href="{{ $promoLeft['url'] ?? '#' }}"
                    class="cs_banner cs_style_4 cs_accent_light_bg cs_radius_10 overflow-hidden position-relative cs_bg_filed"
-                   data-src="{{ asset('assets/glowify/images/banner/banner_img_4.jpeg') }}">
+                   @if(!empty($promoLeft['image'])) style="background-image:url('{{ \Illuminate\Support\Facades\Storage::url($promoLeft['image']) }}');" @else data-src="{{ asset('assets/glowify/images/banner/banner_img_4.jpeg') }}" @endif>
                     <div class="cs_banner_text">
-                        <p class="cs_fs_24 cs_white_color cs_medium">LIMITED TIME OFFER</p>
-                        <h2 class="cs_fs_54 cs_white_color mb-0 cs_normal cs_secondary_font">Buy 2 <br>Get 1</h2>
+                        <p class="cs_fs_24 cs_white_color cs_medium">{{ $promoLeft['title'] }}</p>
+                        @if(!empty($promoLeft['subtitle']))<h2 class="cs_fs_54 cs_white_color mb-0 cs_normal cs_secondary_font">{{ $promoLeft['subtitle'] }}</h2>@endif
                     </div>
                 </a>
             </div>
-            <div class="col-lg-6">
-                <a href="{{ route('products.index', ['category' => 'vitamins-supplements']) }}"
+            @endif
+            @if(!empty($promoRight['title']))
+            <div class="{{ !empty($promoLeft['title']) ? 'col-lg-6' : 'col-12' }}">
+                <a href="{{ $promoRight['url'] ?? '#' }}"
                    class="cs_banner cs_style_5 cs_accent_light_bg cs_radius_10 overflow-hidden position-relative cs_bg_filed"
-                   data-src="{{ asset('assets/glowify/images/banner/banner_img_5.jpeg') }}">
+                   @if(!empty($promoRight['image'])) style="background-image:url('{{ \Illuminate\Support\Facades\Storage::url($promoRight['image']) }}');" @else data-src="{{ asset('assets/glowify/images/banner/banner_img_5.jpeg') }}" @endif>
                     <div class="cs_banner_text">
-                        <p class="cs_fs_24 cs_white_color cs_medium">WELLNESS SALE</p>
-                        <h2 class="cs_fs_54 cs_white_color cs_normal cs_secondary_font">Save 20%</h2>
-                        <span class="cs_banner_lavel cs_accent_strong_bg cs_white_color cs_fs_18 cs_radius_5">on Vitamins &amp; Supplements</span>
+                        <p class="cs_fs_24 cs_white_color cs_medium">{{ $promoRight['title'] }}</p>
+                        @if(!empty($promoRight['subtitle']))<h2 class="cs_fs_54 cs_white_color cs_normal cs_secondary_font">{{ $promoRight['subtitle'] }}</h2>@endif
                     </div>
                 </a>
             </div>
+            @endif
         </div>
     </div>
 </section>
+@endif
 
 {{-- ══════════════════════════════════════════════════ --}}
 {{-- BEST SELLERS                                        --}}
 {{-- ══════════════════════════════════════════════════ --}}
-@if($bestSellers->isNotEmpty())
+@if($sections['show_best_sellers'] && $bestSellers->isNotEmpty())
     <section style="padding:48px 0 64px;">
         <div class="container-xxl px-3 px-md-4">
             <div class="mn-section-head" data-aos="fade-up">
@@ -296,6 +307,7 @@
 @endif
 
 {{-- ══════════════════════════════════════════════════ --}}
+@if($sections['show_faq'])
 {{-- FAQ SECTION (Glowify cs_accordians cs_style_1)       --}}
 {{-- ══════════════════════════════════════════════════ --}}
 <section class="cs_accent_light_bg">
@@ -313,23 +325,25 @@
             <div class="col-lg-8 offset-lg-2" data-aos="fade-up">
                 <div class="cs_accordians cs_style_1 cs_light cs_type_1">
 
-                    @php $faqs = [
-                        ['Q' => 'Are all medicines on MediNova Pharma 100% genuine?', 'A' => 'Yes — every product is sourced directly from licensed manufacturers and authorised distributors. We operate as a registered pharmacy and provide an authenticity guarantee on every order, with batch-level traceability.'],
-                        ['Q' => 'How do I order prescription medicines?',             'A' => 'Simply upload a clear photo or PDF of your prescription at checkout or from your dashboard. Our licensed pharmacists verify it within 2–4 hours during business hours, and dispatch your order as soon as it is approved.'],
-                        ['Q' => 'What is the delivery timeline?',                     'A' => 'Metro cities: 1–2 business days. Tier 2 cities: 2–4 business days. Express 4-hour delivery is available in select areas for an additional fee. You\'ll receive SMS & email tracking updates once shipped.'],
-                        ['Q' => 'What is your return policy?',                         'A' => 'Sealed, unopened OTC products can be returned within 7 days of delivery. Prescription medicines, opened products, cold-chain items, and personal-care products are non-returnable for safety and hygiene reasons.'],
-                        ['Q' => 'Do you accept cash on delivery?',                     'A' => 'Yes — COD is available on orders up to ₹5,000 in most serviceable pincodes. We also accept UPI, credit/debit cards, net banking, and MediNova Wallet. All transactions are secured with 256-bit SSL encryption.'],
-                        ['Q' => 'Are your products cruelty-free and safe?',             'A' => 'All medicines are manufactured per the Indian Pharmacopoeia and stored under controlled temperature. Personal-care and wellness brands on our platform explicitly state their cruelty-free/vegan certifications on the product page.'],
-                    ]; @endphp
+                    @php
+                        $faqs = json_decode(\App\Models\Setting::get('home.faqs', ''), true) ?: [
+                            ['question' => 'Are all medicines on MediNova Pharma 100% genuine?', 'answer' => 'Yes — every product is sourced directly from licensed manufacturers and authorised distributors. We operate as a registered pharmacy and provide an authenticity guarantee on every order, with batch-level traceability.'],
+                            ['question' => 'How do I order prescription medicines?', 'answer' => 'Simply upload a clear photo or PDF of your prescription at checkout or from your dashboard. Our licensed pharmacists verify it within 2–4 hours during business hours, and dispatch your order as soon as it is approved.'],
+                            ['question' => 'What is the delivery timeline?', 'answer' => 'Metro cities: 1–2 business days. Tier 2 cities: 2–4 business days. Express 4-hour delivery is available in select areas for an additional fee. You\'ll receive SMS & email tracking updates once shipped.'],
+                            ['question' => 'What is your return policy?', 'answer' => 'Sealed, unopened OTC products can be returned within 7 days of delivery. Prescription medicines, opened products, cold-chain items, and personal-care products are non-returnable for safety and hygiene reasons.'],
+                            ['question' => 'Do you accept cash on delivery?', 'answer' => 'Yes — COD is available on orders up to $5,000 in most serviceable pincodes. We also accept UPI, credit/debit cards, net banking, and MediNova Wallet. All transactions are secured with 256-bit SSL encryption.'],
+                            ['question' => 'Are your products cruelty-free and safe?', 'answer' => 'All medicines are manufactured per the Indian Pharmacopoeia and stored under controlled temperature. Personal-care and wellness brands on our platform explicitly state their cruelty-free/vegan certifications on the product page.'],
+                        ];
+                    @endphp
 
                     @foreach($faqs as $i => $faq)
                         <div class="cs_accordian {{ $i === 0 ? 'active' : '' }}">
                             <div class="cs_accordian_head">
-                                <h3 class="cs_accordian_title cs_primary_color cs_fs_24 fw-medium mb-0">{{ $faq['Q'] }}</h3>
+                                <h3 class="cs_accordian_title cs_primary_color cs_fs_24 fw-medium mb-0">{{ $faq['question'] }}</h3>
                                 <span class="cs_accordian_toggle"></span>
                             </div>
                             <div class="cs_accordian_body">
-                                <p class="cs_secondary_color cs_font_26 fw-light mb-0">{{ $faq['A'] }}</p>
+                                <p class="cs_secondary_color cs_font_26 fw-light mb-0">{{ $faq['answer'] }}</p>
                             </div>
                         </div>
                     @endforeach
@@ -340,6 +354,7 @@
     </div>
     <div class="cs_height_110 cs_height_lg_30"></div>
 </section>
+@endif
 
 @endsection
 

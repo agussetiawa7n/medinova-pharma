@@ -3,13 +3,14 @@
 namespace App\Services\Payment;
 
 use App\Contracts\PaymentGatewayInterface;
-use App\Models\Setting;
+use App\Services\Payment\Concerns\HasGatewayToggle;
 use Stripe\PaymentIntent;
 use Stripe\Refund;
 use Stripe\Stripe;
 
 class StripeGateway implements PaymentGatewayInterface
 {
+    use HasGatewayToggle;
     public function __construct()
     {
         Stripe::setApiKey(config('services.stripe.secret'));
@@ -65,10 +66,5 @@ class StripeGateway implements PaymentGatewayInterface
     public function getName(): string
     {
         return 'Stripe';
-    }
-
-    public function isEnabled(): bool
-    {
-        return (bool) Setting::get('payment_stripe_enabled', true);
     }
 }

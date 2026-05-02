@@ -66,7 +66,7 @@
                                             <td>{{ $order->created_at->format('d/m/Y') }}</td>
                                             <td>{{ $order->items->count() }} item{{ $order->items->count() === 1 ? '' : 's' }}</td>
                                             <td class="{{ $statusColor }}">{{ $order->status->label() }}</td>
-                                            <td>₹{{ number_format($order->total, 2) }}</td>
+                                            <td>${{ number_format($order->total, 2) }}</td>
                                             <td class="text-end">
                                                 <a class="cs_text_btn" href="{{ route('orders.show', $order) }}">
                                                     <span>View Details</span>

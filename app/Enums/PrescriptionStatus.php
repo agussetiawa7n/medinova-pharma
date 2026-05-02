@@ -2,8 +2,11 @@
 
 namespace App\Enums;
 
+use App\Concerns\HasLabel;
+
 enum PrescriptionStatus: string
 {
+    use HasLabel;
     case Pending  = 'pending';
     case Approved = 'approved';
     case Rejected = 'rejected';
@@ -24,12 +27,5 @@ enum PrescriptionStatus: string
             self::Approved => 'success',
             self::Rejected => 'danger',
         };
-    }
-
-    public static function options(): array
-    {
-        return collect(self::cases())->mapWithKeys(
-            fn ($case) => [$case->value => $case->label()]
-        )->toArray();
     }
 }

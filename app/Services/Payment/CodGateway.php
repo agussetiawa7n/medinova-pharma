@@ -3,10 +3,11 @@
 namespace App\Services\Payment;
 
 use App\Contracts\PaymentGatewayInterface;
-use App\Models\Setting;
+use App\Services\Payment\Concerns\HasGatewayToggle;
 
 class CodGateway implements PaymentGatewayInterface
 {
+    use HasGatewayToggle;
     public function createPayment(float $amount, string $currency, array $metadata = []): array
     {
         return ['method' => 'cod', 'amount' => $amount];
@@ -27,10 +28,5 @@ class CodGateway implements PaymentGatewayInterface
     public function getName(): string
     {
         return 'Cash on Delivery';
-    }
-
-    public function isEnabled(): bool
-    {
-        return (bool) Setting::get('payment_cod_enabled', true);
     }
 }

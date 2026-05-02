@@ -2,8 +2,11 @@
 
 namespace App\Enums;
 
+use App\Concerns\HasLabel;
+
 enum PaymentMethod: string
 {
+    use HasLabel;
     case Razorpay      = 'razorpay';
     case Stripe        = 'stripe';
     case PayPal        = 'paypal';
@@ -33,12 +36,5 @@ enum PaymentMethod: string
             self::Wallet        => 'heroicon-o-wallet',
             self::WalletPartial => 'heroicon-o-wallet',
         };
-    }
-
-    public static function options(): array
-    {
-        return collect(self::cases())->mapWithKeys(
-            fn ($case) => [$case->value => $case->label()]
-        )->toArray();
     }
 }

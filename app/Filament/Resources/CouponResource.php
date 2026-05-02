@@ -30,8 +30,8 @@ class CouponResource extends Resource
                     ->options(['fixed' => 'Fixed Amount', 'percentage' => 'Percentage', 'free_shipping' => 'Free Shipping'])
                     ->required(),
                 Forms\Components\TextInput::make('value')->numeric()->required(),
-                Forms\Components\TextInput::make('min_order_amount')->numeric()->prefix('₹')->default(0),
-                Forms\Components\TextInput::make('max_discount_amount')->numeric()->prefix('₹')->nullable(),
+                Forms\Components\TextInput::make('min_order_amount')->numeric()->prefix('$')->default(0),
+                Forms\Components\TextInput::make('max_discount_amount')->numeric()->prefix('$')->nullable(),
                 Forms\Components\TextInput::make('usage_limit')->numeric()->nullable(),
                 Forms\Components\TextInput::make('usage_limit_per_user')->numeric()->default(1),
                 Forms\Components\Textarea::make('description')->columnSpanFull(),

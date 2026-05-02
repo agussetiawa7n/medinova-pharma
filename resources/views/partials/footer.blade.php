@@ -1,12 +1,17 @@
 @php
-    $phone   = setting('contact.phone', '+91 98765 43210');
+    $phone   = setting('contact.phone', '+91 000000 00000');
     $email   = setting('contact.email', 'support@medinovapharma.com');
-    $address = setting('contact.address', 'A-45, Health Tower, Mumbai 400001');
+    $address = setting('contact.address', 'Jariptaka, Nagpur, Maharashtra');
     $hours   = setting('contact.hours', 'Mon-Sun: 8 AM - 11 PM');
     $fb = setting('social.facebook');
     $tw = setting('social.twitter');
     $ig = setting('social.instagram');
     $li = setting('social.linkedin');
+    $about    = setting('footer.about') ?: 'MediNova Pharma is your trusted online pharmacy — 100% genuine medicines, vitamins, and wellness products delivered safely to your doorstep.';
+    $shopLinks    = json_decode(setting('footer.shop_links', ''), true) ?: [];
+    $supportLinks = json_decode(setting('footer.support_links', ''), true) ?: [];
+    $legalLinks   = json_decode(setting('footer.legal_links', ''), true) ?: [];
+    $copyright = str_replace('{year}', date('Y'), setting('footer.copyright', '© '.date('Y').' MediNova Pharma. All rights reserved.'));
 @endphp
 
 <footer class="mn-footer">
@@ -32,38 +37,34 @@
                 </ul>
             </div>
 
-            {{-- Quick Links --}}
+            {{-- Shop Links (dynamic) --}}
             <div class="col-6 col-md-3 col-lg-2">
                 <h4>Shop</h4>
                 <ul>
-                    <li><a href="{{ route('products.index') }}">All Products</a></li>
-                    <li><a href="{{ route('products.index', ['sort' => 'newest']) }}">New Arrivals</a></li>
-                    <li><a href="{{ route('products.index', ['sort' => 'popular']) }}">Best Sellers</a></li>
-                    <li><a href="{{ route('products.index', ['on_sale' => 1]) }}">On Sale</a></li>
+                    @foreach($shopLinks as $link)
+                        <li><a href="{{ $link['url'] ?? '#' }}">{{ $link['label'] ?? 'Link' }}</a></li>
+                    @endforeach
                     @auth<li><a href="{{ route('prescriptions.index') }}">Upload Prescription</a></li>@endauth
                 </ul>
             </div>
 
-            {{-- Support --}}
+            {{-- Support Links (dynamic) --}}
             <div class="col-6 col-md-3 col-lg-2">
                 <h4>Support</h4>
                 <ul>
-                    <li><a href="{{ route('contact') }}">Contact Us</a></li>
-                    <li><a href="{{ route('page', 'about-us') }}">About Us</a></li>
-                    <li><a href="{{ route('page', 'shipping-policy') }}">Shipping</a></li>
-                    <li><a href="{{ route('page', 'return-refund-policy') }}">Returns</a></li>
-                    @auth<li><a href="{{ route('orders.index') }}">Track Order</a></li>@endauth
+                    @foreach($supportLinks as $link)
+                        <li><a href="{{ $link['url'] ?? '#' }}">{{ $link['label'] ?? 'Link' }}</a></li>
+                    @endforeach
                 </ul>
             </div>
 
-            {{-- Legal --}}
+            {{-- Legal Links (dynamic) --}}
             <div class="col-6 col-md-3 col-lg-2">
                 <h4>Legal</h4>
                 <ul>
-                    <li><a href="{{ route('page', 'privacy-policy') }}">Privacy Policy</a></li>
-                    <li><a href="{{ route('page', 'terms-conditions') }}">Terms &amp; Conditions</a></li>
-                    <li><a href="{{ route('page', 'shipping-policy') }}">Shipping Policy</a></li>
-                    <li><a href="{{ route('page', 'return-refund-policy') }}">Refund Policy</a></li>
+                    @foreach($legalLinks as $link)
+                        <li><a href="{{ $link['url'] ?? '#' }}">{{ $link['label'] ?? 'Link' }}</a></li>
+                    @endforeach
                 </ul>
             </div>
 
@@ -71,12 +72,28 @@
             <div class="col-12 col-md-9 col-lg-2">
                 <h4>Newsletter</h4>
                 <p style="font-size:13.5px; margin-bottom:14px;">Get health tips &amp; special offers in your inbox.</p>
-                <livewire:newsletter-form />
+                <div x-data="newsletterForm">
+                    <div x-show="submitted" class="d-flex align-items-center gap-2" style="color:#b81964; font-size:14px; font-weight:600;">
+                        <i class="fa-solid fa-circle-check"></i>
+                        <span>You're subscribed! Thank you.</span>
+                    </div>
+                    <form x-show="!submitted" @submit.prevent="subscribe" class="d-flex gap-2">
+                        <input type="email" x-model="email" placeholder="your@email.com" required
+                               class="form-control flex-grow-1"
+                               style="background:#1F2937; border:1px solid #374151; color:#fff; font-size:14px; border-radius:8px;">
+                        <button type="submit" :disabled="loading"
+                                class="btn btn-pharma" style="white-space:nowrap; padding:8px 18px;">
+                            <span x-show="!loading">Subscribe</span>
+                            <span x-show="loading">...</span>
+                        </button>
+                    </form>
+                    <p x-show="error" class="mt-2 mb-0" style="color:#FCA5A5; font-size:12px;" x-text="error"></p>
+                </div>
             </div>
         </div>
 
         <div class="mn-footer-bottom d-flex flex-column flex-md-row align-items-md-center justify-content-md-between gap-3">
-            <div>&copy; {{ date('Y') }} MediNova Pharma. All rights reserved.</div>
+            <div>{{ $copyright }}</div>
             <div class="mn-social d-flex align-items-center">
                 @if($fb)<a href="{{ $fb }}" target="_blank" rel="noopener" aria-label="Facebook"><i class="fa-brands fa-facebook-f"></i></a>@endif
                 @if($tw)<a href="{{ $tw }}" target="_blank" rel="noopener" aria-label="Twitter"><i class="fa-brands fa-x-twitter"></i></a>@endif

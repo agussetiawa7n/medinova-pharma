@@ -6,6 +6,7 @@ use App\Services\PrescriptionService;
 use App\Models\Prescription;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 
 class PrescriptionController extends Controller
@@ -44,10 +45,7 @@ class PrescriptionController extends Controller
 
     public function file(Prescription $prescription)
     {
-        // Only the owner can view their prescription
-        if ($prescription->user_id !== Auth::id()) {
-            abort(403);
-        }
+        Gate::authorize('owns-prescription', $prescription);
 
         /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
         $disk = Storage::disk('private');

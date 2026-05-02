@@ -1,10 +1,9 @@
 @php
-    $phone = setting('contact.phone', '+91 98765 43210');
+    $phone = setting('contact.phone', '+91 000000 00000');
     $email = setting('contact.email', 'support@medinovapharma.com');
     $fb    = setting('social.facebook');
     $tw    = setting('social.twitter');
     $ig    = setting('social.instagram');
-    $wishlistCount = auth()->check() ? auth()->user()->wishlist()->count() : 0;
 @endphp
 
 <div class="cs_top_header cs_primary_bg cs_accent_light_color cs_light">
@@ -30,7 +29,7 @@
                             </button>
                             <ul class="cs_dropdown_content cs_language_list">
                                 <li><a href="#"><img src="{{ asset('assets/glowify/images/icons/language_icon_1.svg') }}" alt="Icon">Eng - English</a></li>
-                                <li><a href="#"><img src="{{ asset('assets/glowify/images/icons/language_icon_2.svg') }}" alt="Icon">हिं - हिंदी</a></li>
+                                {{-- <li><a href="#"><img src="{{ asset('assets/glowify/images/icons/language_icon_2.svg') }}" alt="Icon">हिं - हिंदी</a></li> --}}
                             </ul>
                         </div>
                     </li>
@@ -39,7 +38,7 @@
             <div class="cs_top_header_rihgt">
                 <ul class="cs_top_header_list cs_mp_0 cs_mobile_hide">
                     @auth
-                        <li><a href="{{ route('wishlist') }}">Wish List ({{ $wishlistCount }})</a></li>
+                        <li x-data><a href="{{ route('wishlist') }}">Wish List (<span x-text="$store.wishlist.count">0</span>)</a></li>
                         <li><a href="{{ route('dashboard') }}">My Account</a></li>
                     @else
                         <li><a href="{{ route('login') }}">Log In</a></li>

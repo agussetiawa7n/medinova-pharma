@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 
 class OrderController extends Controller
 {
@@ -22,7 +23,7 @@ class OrderController extends Controller
 
     public function show(Order $order)
     {
-        abort_unless($order->user_id === Auth::id(), 403);
+        Gate::authorize('owns-order', $order);
         $order->load('items.product', 'statusHistories');
         return view('orders.show', compact('order'));
     }

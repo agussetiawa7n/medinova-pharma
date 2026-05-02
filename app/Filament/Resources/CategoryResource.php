@@ -27,8 +27,7 @@ class CategoryResource extends Resource
             Grid::make(2)->schema([
                 Forms\Components\TextInput::make('name')
                     ->required()->live(onBlur: true)
-                    ->afterStateUpdated(fn ($state, Set $set) =>
-                        $set('slug', \Illuminate\Support\Str::slug($state))),
+                    ->afterStateUpdated(autoSlug()),
                 Forms\Components\TextInput::make('slug')->required()->unique(ignoreRecord: true),
                 Forms\Components\Select::make('parent_id')
                     ->label('Parent Category')
@@ -36,7 +35,7 @@ class CategoryResource extends Resource
                     ->searchable()->nullable(),
                 Forms\Components\TextInput::make('icon')->placeholder('heroicon-o-tag'),
                 Forms\Components\Textarea::make('description')->columnSpanFull(),
-                Forms\Components\FileUpload::make('image')->image()->directory('categories'),
+                Forms\Components\FileUpload::make('image')->image()->directory('categories')->disk('public'),
                 Forms\Components\TextInput::make('sort_order')->numeric()->default(0),
             ]),
             Grid::make(3)->schema([
@@ -52,7 +51,7 @@ class CategoryResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\ImageColumn::make('image'),
+                Tables\Columns\ImageColumn::make('image')->disk('public'),
                 Tables\Columns\TextColumn::make('name')->searchable()->sortable(),
                 Tables\Columns\TextColumn::make('parent.name')->label('Parent')->badge(),
                 Tables\Columns\TextColumn::make('products_count')->counts('products')->label('Products'),

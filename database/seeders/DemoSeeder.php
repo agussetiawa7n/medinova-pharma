@@ -28,16 +28,16 @@ class DemoSeeder extends Seeder
     private function seedSettings(): void
     {
         $settings = [
-            ['contact.phone',        '+91 98765 43210',                 'contact', 'string'],
+            ['contact.phone',        '+91 000000 00000',                 'contact', 'string'],
             ['contact.email',        'support@medinovapharma.com',      'contact', 'string'],
-            ['contact.address',      'A-45, Health Tower, Mumbai 400001', 'contact', 'string'],
+            ['contact.address',      'Jariptaka, Nagpur, Maharashtra', 'contact', 'string'],
             ['contact.hours',        'Mon-Sun: 8:00 AM - 11:00 PM',     'contact', 'string'],
             ['social.facebook',      'https://facebook.com/medinovapharma', 'social', 'string'],
             ['social.twitter',       'https://twitter.com/medinovapharma',  'social', 'string'],
             ['social.instagram',     'https://instagram.com/medinovapharma', 'social', 'string'],
             ['social.linkedin',      'https://linkedin.com/company/medinovapharma', 'social', 'string'],
-            ['site.free_shipping_threshold', '499', 'shop', 'integer'],
-            ['site.delivery_fee',    '50',  'shop', 'integer'],
+            ['pricing.free_shipping_threshold', '499', 'pricing', 'integer'],
+            ['pricing.delivery_fee',    '50',  'pricing', 'integer'],
             ['site.currency_symbol', '₹',   'shop', 'string'],
         ];
         foreach ($settings as [$key, $value, $group, $type]) {

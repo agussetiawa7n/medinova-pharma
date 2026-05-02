@@ -40,7 +40,7 @@
                 </li>
                 <li class="cs_total_price">
                     <span class="cs_medium cs_fs_24 cs_primary_color">Total</span>
-                    <span class="cs_medium cs_fs_24 cs_primary_color">₹{{ number_format($order->total, 2) }}</span>
+                    <span class="cs_medium cs_fs_24 cs_primary_color">${{ number_format($order->total, 2) }}</span>
                 </li>
             </ul>
         </div>
@@ -59,7 +59,7 @@
         @if($order->payment_method?->value === 'cod')
             <div class="cs_height_30 cs_height_lg_25"></div>
             <p class="cs_light mb-0" style="font-size:13px;">
-                💵 Please keep ₹{{ number_format($order->total, 2) }} ready at delivery.
+                💵 Please keep ${{ number_format($order->total, 2) }} ready at delivery.
             </p>
         @endif
     </div>

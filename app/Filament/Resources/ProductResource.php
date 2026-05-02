@@ -36,8 +36,7 @@ class ProductResource extends Resource
                         Forms\Components\TextInput::make('name')
                             ->required()->maxLength(255)
                             ->live(onBlur: true)
-                            ->afterStateUpdated(fn ($state, Set $set) =>
-                                $set('slug', \Illuminate\Support\Str::slug($state))),
+                            ->afterStateUpdated(autoSlug()),
                         Forms\Components\TextInput::make('slug')
                             ->required()->maxLength(255)->unique(ignoreRecord: true),
                         Forms\Components\Select::make('category_id')
@@ -57,11 +56,11 @@ class ProductResource extends Resource
                 Tab::make('Pricing & Stock')->schema([
                     Grid::make(3)->schema([
                         Forms\Components\TextInput::make('price')
-                            ->numeric()->prefix('₹')->required(),
+                            ->numeric()->prefix('$')->required(),
                         Forms\Components\TextInput::make('compare_price')
-                            ->numeric()->prefix('₹'),
+                            ->numeric()->prefix('$'),
                         Forms\Components\TextInput::make('cost_price')
-                            ->numeric()->prefix('₹'),
+                            ->numeric()->prefix('$'),
                         Forms\Components\TextInput::make('stock_quantity')
                             ->numeric()->default(0),
                         Forms\Components\TextInput::make('low_stock_threshold')
@@ -77,9 +76,9 @@ class ProductResource extends Resource
                 ]),
                 Tab::make('Media')->schema([
                     Forms\Components\FileUpload::make('thumbnail')
-                        ->image()->directory('products/thumbnails')->columnSpanFull(),
+                        ->image()->disk('public')->directory('products/thumbnails')->columnSpanFull(),
                     Forms\Components\FileUpload::make('images')
-                        ->image()->multiple()->directory('products/gallery')->columnSpanFull(),
+                        ->image()->multiple()->disk('public')->directory('products/gallery')->columnSpanFull(),
                 ]),
                 Tab::make('Status & Visibility')->schema([
                     Grid::make(2)->schema([

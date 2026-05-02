@@ -75,7 +75,7 @@
 
                             <div class="mn-cart-col" style="color:#e61f7f; font-weight:700;">
                                 <span class="d-md-none text-muted me-2" style="font-size:12px;">Price:</span>
-                                ₹{{ number_format($item->unit_price, 2) }}
+                                ${{ number_format($item->unit_price, 2) }}
                             </div>
 
                             <div>
@@ -89,7 +89,7 @@
 
                             <div style="font-weight:800; color:#303030;">
                                 <span class="d-md-none text-muted me-2" style="font-size:12px;">Total:</span>
-                                ₹{{ number_format($item->unit_price * $item->quantity, 2) }}
+                                ${{ number_format($item->unit_price * $item->quantity, 2) }}
                             </div>
 
                             <div class="text-end">
@@ -108,7 +108,7 @@
                         </a>
                         <div class="text-muted" style="font-size:13px;">
                             <i class="fa-solid fa-truck-fast me-1" style="color:#e61f7f;"></i>
-                            Free shipping on orders above ₹{{ setting('site.free_shipping_threshold', 499) }}
+                            Free shipping on orders above ${{ setting('pricing.free_shipping_threshold', 499) }}
                         </div>
                     </div>
                 </div>
@@ -159,24 +159,24 @@
                     <div class="d-flex flex-column gap-2 mb-3" style="font-size:14.5px;">
                         <div class="d-flex justify-content-between">
                             <span class="text-muted">Subtotal</span>
-                            <span style="color:#303030; font-weight:600;">₹{{ number_format($subtotal ?? 0, 2) }}</span>
+                            <span style="color:#303030; font-weight:600;">${{ number_format($subtotal ?? 0, 2) }}</span>
                         </div>
                         @if(isset($discount) && $discount > 0)
                             <div class="d-flex justify-content-between" style="color:#e61f7f;">
                                 <span>Discount</span>
-                                <span>−₹{{ number_format($discount, 2) }}</span>
+                                <span>−${{ number_format($discount, 2) }}</span>
                             </div>
                         @endif
                         <div class="d-flex justify-content-between">
                             <span class="text-muted">Shipping</span>
                             <span style="color:{{ ($shipping ?? 0) > 0 ? '#303030' : '#e61f7f' }}; font-weight:600;">
-                                {{ ($shipping ?? 0) > 0 ? '₹' . number_format($shipping, 2) : 'FREE' }}
+                                {{ ($shipping ?? 0) > 0 ? '$' . number_format($shipping, 2) : 'FREE' }}
                             </span>
                         </div>
                         @if(isset($tax) && $tax > 0)
                             <div class="d-flex justify-content-between">
-                                <span class="text-muted">Tax (18% GST)</span>
-                                <span style="color:#303030; font-weight:600;">₹{{ number_format($tax, 2) }}</span>
+                                <span class="text-muted">Tax ({{ (int) setting('pricing.tax_rate', 18) }}% GST)</span>
+                                <span style="color:#303030; font-weight:600;">${{ number_format($tax, 2) }}</span>
                             </div>
                         @endif
                     </div>
@@ -185,7 +185,7 @@
 
                     <div class="d-flex justify-content-between align-items-baseline mb-4">
                         <span style="font-weight:800; color:#303030;">Total</span>
-                        <span style="font-weight:800; font-size:22px; color:#e61f7f;">₹{{ number_format($total ?? 0, 2) }}</span>
+                        <span style="font-weight:800; font-size:22px; color:#e61f7f;">${{ number_format($total ?? 0, 2) }}</span>
                     </div>
 
                     <a href="{{ route('checkout') }}" class="btn btn-pharma w-100" style="padding:14px;">

@@ -4,12 +4,12 @@
     $discount  = $onSale ? (int) round((($product->compare_price - $product->price) / $product->compare_price) * 100) : 0;
     $isNew     = $product->created_at && $product->created_at->gt(now()->subDays(14));
     $outOfStock = $product->track_inventory && $product->stock_quantity <= 0 && !$product->allow_backorder;
-    $rating    = round($product->reviews_avg_rating ?? $product->average_rating ?? 0, 1);
+    $rating    = round($product->reviews_avg_rating ?? 0, 1);
     $reviewCnt = $product->reviews_count ?? null;
     $inWishlist = $product->in_wishlist ?? false;
 @endphp
 
-<article class="mn-product-card" x-data="productCard({{ $product->id }})">
+<article class="mn-product-card" x-data="productCard({{ $product->id }}, '{{ addslashes($product->name) }}', {{ $product->price }}, '{{ $product->thumbnail_url }}', '{{ $product->slug }}')">
 
     {{-- Badges --}}
     <div class="mn-product-badges">
@@ -71,9 +71,9 @@
         @endif
 
         <div class="mn-product-price">
-            <span class="now">₹{{ number_format($product->price, 2) }}</span>
+            <span class="now">${{ number_format($product->price, 2) }}</span>
             @if($onSale)
-                <span class="was">₹{{ number_format($product->compare_price, 2) }}</span>
+                <span class="was">${{ number_format($product->compare_price, 2) }}</span>
             @endif
         </div>
 
@@ -88,9 +88,13 @@
                 </a>
             @else
                 <button type="button" class="btn btn-pharma"
-                        @click="addToCart()" :disabled="loading">
-                    <span x-show="!loading"><i class="fa-solid fa-cart-plus me-1"></i> Add to Cart</span>
-                    <span x-show="loading" x-cloak><i class="fa-solid fa-spinner fa-spin me-1"></i> Adding…</span>
+                        @click="addToCart()" :disabled="loading || added"
+                        :class="{ 'bg-success border-success': added }">
+                    <span>
+                        <i class="fa-solid fa-cart-plus me-1"
+                           :class="added ? 'fa-check' : loading ? 'fa-spinner fa-spin' : 'fa-cart-plus'"></i>
+                        <span x-text="added ? 'Added ✓' : loading ? 'Adding…' : 'Add to Cart'">Add to Cart</span>
+                    </span>
                 </button>
             @endif
         </div>

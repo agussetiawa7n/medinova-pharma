@@ -48,7 +48,7 @@ class Product extends Model
             $path = $this->thumbnail;
             if (!$path) return asset('images/product-placeholder.svg');
             if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) return $path;
-            return Storage::url($path);
+            return Storage::disk('public')->url($path);
         });
     }
 
@@ -73,6 +73,11 @@ class Product extends Model
     }
 
     public function reviews(): HasMany
+    {
+        return $this->hasMany(ProductReview::class)->where('is_approved', true);
+    }
+
+    public function approvedReviews(): HasMany
     {
         return $this->hasMany(ProductReview::class)->where('is_approved', true);
     }

@@ -34,48 +34,26 @@
                 <div class="col-md-6">
                     <div class="cs_account_card cs_radius_10" style="background:linear-gradient(135deg,#e61f7f,#b81964); color:#fff; padding:30px 28px; border:0;">
                         <p class="mb-1" style="font-size:12px; text-transform:uppercase; letter-spacing:2px; opacity:0.8;">Available Balance</p>
-                        <h2 style="color:#fff; font-weight:800; font-size:42px; margin:0;">₹{{ number_format($wallet->balance ?? 0, 2) }}</h2>
+                        <h2 style="color:#fff; font-weight:800; font-size:42px; margin:0;">${{ number_format($wallet->balance ?? 0, 2) }}</h2>
                         <p class="mb-0 mt-2" style="font-size:13px; opacity:0.85;">
                             Use your wallet at checkout for faster payments.
                         </p>
                     </div>
                 </div>
 
-                {{-- Top up card --}}
+                {{-- Add Money card --}}
                 <div class="col-md-6">
-                    <div class="cs_account_card cs_radius_10" style="padding:26px 28px; height:100%;">
-                        <h3 class="cs_fs_18 mb-1">Add Money</h3>
-                        <p class="cs_light mb-3" style="font-size:13px;">Top up via Razorpay (UPI, Card, Net Banking).</p>
-
-                        <form action="{{ route('wallet.topup') }}" method="POST">
-                            @csrf
-
-                            <div class="d-flex gap-2 flex-wrap mb-3">
-                                @foreach([100, 250, 500, 1000, 2000] as $preset)
-                                    <button type="button"
-                                            onclick="document.getElementById('topup-amount').value = {{ $preset }}"
-                                            class="cs_btn cs_style_1 cs_fs_14 cs_type_1" style="padding:6px 14px;">
-                                        <span>₹{{ $preset }}</span>
-                                    </button>
-                                @endforeach
+                    <div class="cs_account_card cs_radius_10" style="padding:26px 28px; height:100%; display:flex; flex-direction:column; justify-content:center;">
+                        <div class="text-center">
+                            <div class="mx-auto mb-3" style="width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg,#e61f7f,#b81964); display:flex; align-items:center; justify-content:center; color:#fff; font-size:24px;">
+                                <i class="fa-solid fa-plus"></i>
                             </div>
-
-                            <div class="position-relative mb-2">
-                                <span class="position-absolute cs_primary_color cs_semibold" style="left:16px; top:50%; transform:translateY(-50%);">₹</span>
-                                <input type="number" id="topup-amount" name="amount" min="10" max="50000" step="1"
-                                       value="{{ old('amount', 500) }}"
-                                       placeholder="Enter amount"
-                                       class="cs_form_field" style="padding-left:32px;" required>
-                            </div>
-
-                            @error('amount')
-                                <p class="cs_ternary_color mb-2" style="font-size:12.5px;">{{ $message }}</p>
-                            @enderror
-
-                            <button type="submit" class="cs_btn cs_style_1 cs_fs_16 cs_medium w-100">
-                                <span>Add Money to Wallet</span>
-                            </button>
-                        </form>
+                            <h3 class="cs_fs_18 mb-1">Add Money to Wallet</h3>
+                            <p class="cs_light mb-3" style="font-size:13px;">Purchase wallet balance securely through our payment portal.</p>
+                            <a href="{{ route('wallet.add.balance') }}" class="cs_btn cs_style_1 cs_fs_16 cs_medium">
+                                <span>Add Money</span>
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -117,7 +95,7 @@
                                                 {{ $tx->type->label() }}
                                             </td>
                                             <td class="text-end cs_semibold {{ $isCredit ? 'cs_accent_color' : 'cs_ternary_color' }}" style="font-size:16px;">
-                                                {{ $isCredit ? '+' : '−' }}₹{{ number_format($tx->amount, 2) }}
+                                                {{ $isCredit ? '+' : '−' }}${{ number_format($tx->amount, 2) }}
                                             </td>
                                         </tr>
                                     @endforeach

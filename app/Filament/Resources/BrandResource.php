@@ -27,10 +27,9 @@ class BrandResource extends Resource
             Grid::make(2)->schema([
                 Forms\Components\TextInput::make('name')
                     ->required()->live(onBlur: true)
-                    ->afterStateUpdated(fn ($state, Set $set) =>
-                        $set('slug', \Illuminate\Support\Str::slug($state))),
+                    ->afterStateUpdated(autoSlug()),
                 Forms\Components\TextInput::make('slug')->required()->unique(ignoreRecord: true),
-                Forms\Components\FileUpload::make('logo')->image()->directory('brands'),
+                Forms\Components\FileUpload::make('logo')->image()->disk('public')->directory('brands'),
                 Forms\Components\TextInput::make('website')->url(),
                 Forms\Components\Textarea::make('description')->columnSpanFull(),
                 Forms\Components\Toggle::make('is_active')->default(true),

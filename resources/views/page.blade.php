@@ -5,10 +5,14 @@
 
 @section('content')
 
+@php
+    $bcImg = $page->breadcrumb_image ? \Illuminate\Support\Facades\Storage::url($page->breadcrumb_image) : asset('assets/glowify/images/breadcamp_bg_' . (($page->id ?? 1) % 10 + 1) . '.jpeg');
+    $bcTitle = $page->breadcrumb_title ?: $page->title;
+@endphp
 @include('partials.breadcamp', [
-    'bcTitle' => $page->title,
-    'bcBg' => asset('assets/glowify/images/breadcamp_bg_' . (($page->id ?? 1) % 10 + 1) . '.jpeg'),
-    'bcCrumbs' => [['label' => 'Home', 'url' => route('home')], ['label' => $page->title]],
+    'bcTitle' => $bcTitle,
+    'bcBg' => $bcImg,
+    'bcCrumbs' => [['label' => 'Home', 'url' => route('home')], ['label' => $bcTitle]],
 ])
 
 <div class="cs_height_80 cs_height_lg_60"></div>

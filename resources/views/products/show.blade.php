@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('title', $product->name . ' — MediNova Pharma')
-@section('meta_description', $product->short_description ?? $product->name)
+@section('meta_description', \Illuminate\Support\Str::limit(strip_tags($product->short_description ?? $product->name), 155))
 
 @section('breadcrumb')
     <ol>
@@ -27,7 +27,7 @@
         ->concat(is_array($product->images) ? $product->images : [])
         ->filter()
         ->unique()
-        ->map(fn ($p) => \Illuminate\Support\Str::startsWith($p, ['http://','https://']) ? $p : \Illuminate\Support\Facades\Storage::url($p))
+        ->map(fn ($p) => \Illuminate\Support\Str::startsWith($p, ['http://','https://']) ? $p : \Illuminate\Support\Facades\Storage::disk('public')->url($p))
         ->values();
     $rating    = round($product->reviews->avg('rating') ?? 0, 1);
     $reviewCnt = $product->reviews_count ?? $product->reviews->count();
@@ -37,78 +37,104 @@
 
     <div class="row g-4 g-lg-5">
 
-        {{-- ═════════ Gallery ═════════ --}}
-        <div class="col-lg-6" x-data="{ active: 0, images: @js($images->toArray()) }">
-            <div class="bg-white border rounded-4 overflow-hidden mb-3 position-relative" style="aspect-ratio:1/1;">
-                <template x-if="images.length">
-                    <img :src="images[active]" :alt="'{{ addslashes($product->name) }}'"
-                         class="w-100 h-100"
-                         style="object-fit:contain; padding:5%; transition:transform .4s ease;"
-                         @mouseover="$event.currentTarget.style.transform='scale(1.15)'"
-                         @mouseleave="$event.currentTarget.style.transform=''">
-                </template>
-                <template x-if="!images.length">
-                    <div class="d-flex align-items-center justify-content-center h-100 text-muted" style="font-size:72px;">
-                        <i class="fa-solid fa-pills"></i>
-                    </div>
-                </template>
-
-                @if($onSale)
-                    <span class="position-absolute mn-badge-sale" style="top:20px; left:20px;">-{{ $discount }}%</span>
-                @endif
-                @if($product->requires_prescription)
-                    <span class="position-absolute mn-badge-rx" style="top:20px; right:20px;">
-                        <i class="fa-solid fa-prescription me-1"></i> Rx Required
-                    </span>
-                @endif
+     {{-- ═════════ Gallery ═════════ --}}
+<div class="col-lg-6" x-data="{ active: 0, images: @js($images->toArray()), fading: false,
+    setActive(i) { if (this.active === i) return; this.fading = true; setTimeout(() => { this.active = i; this.fading = false; }, 200); }
+}">
+    <div class="bg-white border rounded-4 overflow-hidden mb-3 position-relative" style="aspect-ratio:1/1;">
+        <template x-if="images.length">
+            <img :src="images[active]" :alt="'{{ addslashes($product->name) }}'"
+                 class="w-100 h-100"
+                 :style="fading ? 'opacity:0;' : 'opacity:1;'"
+                 style="object-fit:contain; padding:5%; transition:transform .4s ease, opacity .2s ease;"
+                 @mouseover="$event.currentTarget.style.transform='scale(1.15)'"
+                 @mouseleave="$event.currentTarget.style.transform=''">
+        </template>
+        <template x-if="!images.length">
+            <div class="d-flex align-items-center justify-content-center h-100 text-muted" style="font-size:72px;">
+                <i class="fa-solid fa-pills"></i>
             </div>
+        </template>
 
-            {{-- Thumbnails --}}
-            <template x-if="images.length > 1">
-                <div class="d-flex gap-2 flex-wrap">
-                    <template x-for="(img, i) in images" :key="i">
-                        <button type="button"
-                                class="btn p-0 border rounded-3 overflow-hidden"
-                                style="width:78px; height:78px; background:#F8FAFB;"
-                                :style="active === i ? 'border-color:#e61f7f; border-width:2px;' : ''"
-                                @click="active = i">
-                            <img :src="img" style="width:100%; height:100%; object-fit:contain; padding:6px;" alt="thumbnail">
-                        </button>
-                    </template>
-                </div>
+        @if($onSale)
+            <span class="position-absolute mn-badge-sale" style="top:20px; left:20px;">-{{ $discount }}%</span>
+        @endif
+        @if($product->requires_prescription)
+            <span class="position-absolute mn-badge-rx" style="top:20px; right:20px;">
+                <i class="fa-solid fa-prescription me-1"></i> Rx Required
+            </span>
+        @endif
+    </div>
+
+    {{-- Thumbnails --}}
+    <template x-if="images.length > 1">
+        <div class="d-flex gap-2 mn-thumb-row" style="overflow-x:auto; padding-bottom:4px; scrollbar-width:none;">
+            <template x-for="(img, i) in images" :key="i">
+                <button type="button"
+                        class="btn p-0 border rounded-3 overflow-hidden"
+                        style="width:78px; height:78px; background:#F8FAFB; flex-shrink:0;"
+                        :style="active === i ? 'border-color:#e61f7f; border-width:2px;' : ''"
+                        @click="setActive(i)">
+                    <img :src="img" style="width:100%; height:100%; object-fit:cover;" alt="thumbnail">
+                </button>
             </template>
         </div>
+    </template>
+</div>
 
         {{-- ═════════ Info ═════════ --}}
         <div class="col-lg-6" x-data="{
             quantity: 1,
             loading: false,
+            added: false,
             selectedVariant: {{ $product->variants->where('is_default', true)->first()?->id ?? 'null' }},
             wishLoading: false,
             increment() { this.quantity = Math.min(this.quantity + 1, {{ max($stock, 1) }}); },
             decrement() { this.quantity = Math.max(this.quantity - 1, 1); },
             addToCart() {
-                if (this.loading) return;
+                if (this.loading || this.added) return;
+
+                const prevCount = Alpine.store('cart').count;
+                const pendingId = 'p-' + Date.now();
+                Alpine.store('cart').count = prevCount + this.quantity;
                 this.loading = true;
+
+                Alpine.store('cartPending').items.push({
+                    id: pendingId, name: '{{ addslashes($product->name) }}',
+                    price: {{ $product->price }}, image: '{{ addslashes($product->thumbnail_url) }}',
+                    slug: '{{ $product->slug }}', quantity: this.quantity,
+                    line: {{ $product->price }} * this.quantity,
+                });
+
+                window.openCartOffcanvas();
+
                 window.apiFetch('/ajax/cart/add', {
                     method:'POST',
                     body: { product_id: {{ $product->id }}, quantity: this.quantity, variant_id: this.selectedVariant }
                 })
                 .then(data => {
                     Alpine.store('cart').count = data.count;
-                    Alpine.store('toast').add('Added to cart!', 'success');
                     window.dispatchEvent(new CustomEvent('cart-updated'));
+                    this.loading = false;
+                    this.added = true;
+                    setTimeout(() => { this.added = false; }, 2000);
                 })
-                .catch(err => Alpine.store('toast').add(err.message || 'Could not add to cart', 'error'))
-                .finally(() => { this.loading = false; });
+                .catch(err => {
+                    Alpine.store('cart').count = prevCount;
+                    Alpine.store('cartPending').items = Alpine.store('cartPending').items.filter(i => i.id !== pendingId);
+                    Alpine.store('toast').add(err.message || 'Could not add to cart', 'error');
+                    this.loading = false;
+                });
             },
-            toggleWishlist(btn) {
+            toggleWishlist(el) {
                 if (this.wishLoading) return;
+                const btn = el; // stable reference for async .then()
                 this.wishLoading = true;
                 window.apiFetch('/ajax/wishlist/toggle', { method:'POST', body:{ product_id: {{ $product->id }} } })
                     .then(data => {
                         btn.classList.toggle('active', data.in_wishlist);
                         btn.querySelector('i').className = (data.in_wishlist ? 'fa-solid' : 'fa-regular') + ' fa-heart me-2';
+                        window.dispatchEvent(new CustomEvent('wishlist-updated'));
                         Alpine.store('toast').add(data.message, 'success');
                     })
                     .catch(err => Alpine.store('toast').add(err.message || 'Please sign in', 'error'))
@@ -151,9 +177,9 @@
 
             {{-- Price --}}
             <div class="d-flex align-items-baseline gap-3 mb-3 pb-3 border-bottom">
-                <span style="font-size:36px; font-weight:800; color:#e61f7f;">₹{{ number_format($product->price, 2) }}</span>
+                <span style="font-size:36px; font-weight:800; color:#e61f7f;">${{ number_format($product->price, 2) }}</span>
                 @if($onSale)
-                    <span class="text-muted text-decoration-line-through" style="font-size:20px;">₹{{ number_format($product->compare_price, 2) }}</span>
+                    <span class="text-muted text-decoration-line-through" style="font-size:20px;">${{ number_format($product->compare_price, 2) }}</span>
                     <span class="mn-badge-sale">-{{ $discount }}% OFF</span>
                 @endif
                 <span class="ms-auto text-muted" style="font-size:12.5px;">Incl. all taxes</span>
@@ -186,7 +212,7 @@
                                     @click="selectedVariant = {{ $variant->id }}">
                                 {{ $variant->name }}
                                 @if($variant->price && $variant->price != $product->price)
-                                    <span class="ms-1 text-muted">₹{{ number_format($variant->price, 2) }}</span>
+                                    <span class="ms-1 text-muted">${{ number_format($variant->price, 2) }}</span>
                                 @endif
                             </button>
                         @endforeach
@@ -208,9 +234,13 @@
                     </a>
                 @elseif($inStock)
                     <button type="button" class="btn btn-pharma flex-grow-1" style="padding:13px 24px;"
-                            @click="addToCart()" :disabled="loading">
-                        <span x-show="!loading"><i class="fa-solid fa-cart-plus me-2"></i> Add to Cart</span>
-                        <span x-show="loading" x-cloak><i class="fa-solid fa-spinner fa-spin me-2"></i> Adding…</span>
+                            @click="addToCart()" :disabled="loading || added"
+                            :class="{ 'bg-success border-success': added }">
+                        <span>
+                            <i class="fa-solid fa-cart-plus me-2"
+                               :class="added ? 'fa-check' : loading ? 'fa-spinner fa-spin' : 'fa-cart-plus'"></i>
+                            <span x-text="added ? 'Added ✓' : loading ? 'Adding…' : 'Add to Cart'">Add to Cart</span>
+                        </span>
                     </button>
                 @else
                     <button type="button" class="btn btn-secondary flex-grow-1" style="padding:13px 24px;" disabled>
@@ -233,7 +263,7 @@
             {{-- Trust badges --}}
             <div class="d-flex flex-wrap gap-3 py-3 border-top border-bottom mb-4">
                 <div class="d-flex align-items-center gap-2" style="font-size:13px; color:#636363;">
-                    <i class="fa-solid fa-truck-fast" style="color:#e61f7f; font-size:18px;"></i> Free delivery above ₹{{ setting('site.free_shipping_threshold', 499) }}
+                    <i class="fa-solid fa-truck-fast" style="color:#e61f7f; font-size:18px;"></i> Free delivery above ${{ setting('pricing.free_shipping_threshold', 499) }}
                 </div>
                 <div class="d-flex align-items-center gap-2" style="font-size:13px; color:#636363;">
                     <i class="fa-solid fa-shield-halved" style="color:#e61f7f; font-size:18px;"></i> 100% Genuine
@@ -394,6 +424,8 @@
 
     #mnProductTabs .nav-link { color:#6B7280; border:0; padding:12px 24px; }
     #mnProductTabs .nav-link.active { color:#e61f7f; background:transparent; border-bottom:3px solid #e61f7f; margin-bottom:-2px; }
+
+    .mn-thumb-row::-webkit-scrollbar { display: none; }
 </style>
 @endpush
 @endsection

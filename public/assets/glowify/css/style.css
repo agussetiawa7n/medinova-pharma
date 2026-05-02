@@ -23,7 +23,7 @@
 /*--------------------------------------------------------------
 ## All Variables
 ----------------------------------------------------------------*/
-@import url("https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap");
+/* Google Fonts loaded via <link> in HTML head for performance */
 :root {
   --white: #fff;
   --black: #000;

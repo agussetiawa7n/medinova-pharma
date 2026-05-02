@@ -352,6 +352,85 @@
 
     </div>
 
+    {{-- ══ EXTERNAL WALLET PURCHASE ══ --}}
+    @php $extOn = $wallet_external_enabled; @endphp
+    <div class="ps-card {{ $extOn ? 'active' : '' }}" style="margin-top:1.25rem;"
+         style="--card-color:#ec4899;--card-glow:rgba(236,72,153,.2);--stripe-top:#f472b6;--stripe-bot:#db2777;--icon-bg:#fdf2f8;--icon-color:#db2777">
+        <div class="stripe"></div>
+        <div class="ps-header" style="padding-left:1.75rem">
+            <div style="display:flex;align-items:center;gap:.875rem">
+                <div class="ps-icon-bg">
+                    <x-filament::icon icon="heroicon-o-arrow-top-right-on-square" class="ps-icon" />
+                </div>
+                <div>
+                    <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.2rem">
+                        <span style="font-size:.875rem;font-weight:700;color:#1e293b">External Wallet Purchase</span>
+                        @if($extOn)
+                            <span class="ps-badge on"><span class="ps-dot"></span> Active</span>
+                        @else
+                            <span class="ps-badge off">Inactive</span>
+                        @endif
+                    </div>
+                    <p style="font-size:.72rem;color:#94a3b8;margin:0">Redirect users to external site for wallet top-up · Code redemption flow</p>
+                </div>
+            </div>
+            <label class="ps-toggle" style="--toggle-on:#db2777">
+                <input type="checkbox" wire:model.live="wallet_external_enabled">
+                <div class="ps-track"></div>
+            </label>
+        </div>
+        @if($extOn)
+        <div class="ps-creds">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                <div style="grid-column:1/-1">
+                    <label class="ps-label">External Purchase URL</label>
+                    <div class="ps-input-wrap">
+                        <input type="url" wire:model="wallet_purchase_url" placeholder="https://pay.your-other-site.com/topup" class="ps-input" style="--focus-ring:#db2777;--focus-glow:rgba(219,39,119,.12)">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" /></svg>
+                    </div>
+                </div>
+                <div>
+                    <label class="ps-label">Shared Secret (HMAC Key)</label>
+                    <div class="ps-input-wrap">
+                        <input type="password" wire:model="wallet_shared_secret" placeholder="••••••••••••" class="ps-input" style="--focus-ring:#db2777;--focus-glow:rgba(219,39,119,.12)">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
+                    </div>
+                </div>
+                <div>
+                    <label class="ps-label">Tutorial Video URL</label>
+                    <div class="ps-input-wrap">
+                        <input type="url" wire:model="wallet_tutorial_video" placeholder="https://www.youtube.com/watch?v=xxxx" class="ps-input" style="--focus-ring:#db2777;--focus-glow:rgba(219,39,119,.12)">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15.91 11.672a.375.375 0 010 .656l-5.603 3.113a.375.375 0 01-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112z" /></svg>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:1rem; padding:.75rem 1rem; border-radius:.625rem; background:#fdf2f8; border:1px solid #fce7f3;">
+                <p style="font-size:.72rem;font-weight:700;color:#9d174d;margin:0 0 .4rem">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:.85rem;height:.85rem;vertical-align:middle;margin-right:.25rem"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
+                    How It Works
+                </p>
+                <ol style="margin:0;padding-left:1.1rem;font-size:.7rem;color:#831843;line-height:1.7">
+                    <li>User clicks <strong>"Add Money"</strong> in wallet → lands on the <code style="background:rgba(219,39,119,.1);padding:0 .25rem;border-radius:.2rem">/wallet/add-balance</code> page with guidelines + video.</li>
+                    <li>User visits the <strong>External Purchase URL</strong> (above), completes payment, and receives a <strong>unique redemption code</strong>.</li>
+                    <li>User pastes the code back on the add-balance page. System verifies the code using <strong>HMAC-SHA256</strong> + the Shared Secret above, then credits the wallet instantly.</li>
+                </ol>
+                <p style="margin:.5rem 0 0;font-size:.68rem;color:#9d174d;">
+                    <strong>External site code format:</strong>
+                    <code style="background:rgba(219,39,119,.1);padding:.1rem .3rem;border-radius:.2rem;font-size:.65rem;word-break:break-all">
+                        base64_encode(json_encode(['user_id', 'amount', 'transaction_id', 'timestamp', 'signature' => HMAC(user_id:amount:transaction_id:timestamp, secret)]))
+                    </code>
+                </p>
+            </div>
+
+            <p style="margin-top:.75rem;font-size:.7rem;color:#94a3b8;display:flex;align-items:center;gap:.35rem">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:.9rem;height:.9rem;flex-shrink:0"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
+                The same Shared Secret must be configured on your external payment site for code generation.
+            </p>
+        </div>
+        @endif
+    </div>
+
     {{-- ══ STICKY SAVE BAR ══ --}}
     <div class="ps-savebar">
         <div style="display:flex;align-items:center;gap:.5rem;font-size:.78rem;color:#94a3b8">

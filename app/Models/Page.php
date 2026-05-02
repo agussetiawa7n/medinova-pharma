@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 class Page extends Model
 {
     protected $fillable = [
-        'title', 'slug', 'content', 'is_active', 'meta_title', 'meta_description',
+        'title', 'slug', 'content', 'breadcrumb_title', 'breadcrumb_image',
+        'is_active', 'meta_title', 'meta_description',
     ];
 
     protected function casts(): array

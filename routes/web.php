@@ -44,10 +44,13 @@ Route::delete('/cart/coupon', [CartController::class, 'removeCoupon'])->name('ca
 Route::prefix('ajax')->name('ajax.')->group(function () {
     Route::get('/products', [ProductController::class, 'ajaxIndex'])->name('products');
     Route::get('/cart/count', [CartController::class, 'count'])->name('ajax.cart.count');
+    Route::get('/cart/data', [CartController::class, 'data'])->name('ajax.cart.data');
     Route::post('/cart/add', [CartController::class, 'add'])->name('ajax.cart.add');
     Route::patch('/cart/item/{id}', [CartController::class, 'update'])->name('ajax.cart.update');
     Route::delete('/cart/item/{id}', [CartController::class, 'remove'])->name('ajax.cart.remove');
-    Route::post('/wishlist/toggle', [WishlistController::class, 'toggle'])->name('ajax.wishlist.toggle');
+    Route::get('/wishlist/count', [WishlistController::class, 'count'])->name('ajax.wishlist.count');
+    Route::post('/wishlist/toggle', [WishlistController::class, 'toggle'])->middleware('auth')->name('ajax.wishlist.toggle');
+    Route::post('/newsletter/subscribe', [HomeController::class, 'newsletterSubscribe'])->name('ajax.newsletter.subscribe');
 });
 
 // --- Authenticated ---
@@ -58,10 +61,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout');
     Route::post('/checkout', [CheckoutController::class, 'store'])->name('checkout.store');
     Route::get('/checkout/success/{order}', [CheckoutController::class, 'success'])->name('checkout.success');
-    Route::post('/checkout/razorpay/callback', [CheckoutController::class, 'razorpayCallback'])->name('checkout.razorpay.callback');
-    Route::get('/checkout/stripe/success', [CheckoutController::class, 'stripeSuccess'])->name('checkout.stripe.success');
-    Route::get('/checkout/paypal/success', [CheckoutController::class, 'paypalSuccess'])->name('checkout.paypal.success');
-    Route::get('/checkout/paypal/cancel', [CheckoutController::class, 'paypalCancel'])->name('checkout.paypal.cancel');
+    Route::post('/checkout/{gateway}/callback', [CheckoutController::class, 'handlePaymentCallback'])->name('checkout.callback');
+    Route::get('/checkout/{gateway}/cancel', [CheckoutController::class, 'handlePaymentCancel'])->name('checkout.cancel');
 
     // Orders
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
@@ -69,8 +70,8 @@ Route::middleware('auth')->group(function () {
 
     // Wallet
     Route::get('/wallet', [WalletController::class, 'index'])->name('wallet');
-    Route::post('/wallet/topup', [WalletController::class, 'topup'])->name('wallet.topup');
-    Route::post('/wallet/topup/callback', [WalletController::class, 'topupCallback'])->name('wallet.topup.callback');
+    Route::get('/wallet/add-balance', [WalletController::class, 'addBalance'])->name('wallet.add.balance');
+    Route::post('/wallet/redeem-code', [WalletController::class, 'redeemCode'])->name('wallet.redeem.code');
 
     // Wishlist
     Route::get('/wishlist', [WishlistController::class, 'index'])->name('wishlist');

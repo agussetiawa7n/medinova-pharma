@@ -3,11 +3,12 @@
 namespace App\Services\Payment;
 
 use App\Contracts\PaymentGatewayInterface;
-use App\Models\Setting;
+use App\Services\Payment\Concerns\HasGatewayToggle;
 use Razorpay\Api\Api;
 
 class RazorpayGateway implements PaymentGatewayInterface
 {
+    use HasGatewayToggle;
     private Api $api;
 
     public function __construct()
@@ -67,10 +68,5 @@ class RazorpayGateway implements PaymentGatewayInterface
     public function getName(): string
     {
         return 'Razorpay';
-    }
-
-    public function isEnabled(): bool
-    {
-        return (bool) Setting::get('payment_razorpay_enabled', true);
     }
 }

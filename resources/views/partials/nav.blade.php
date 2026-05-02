@@ -1,11 +1,11 @@
 @php
-    $menuCats = \App\Models\Category::query()
-        ->where('show_in_menu', true)
-        ->where('is_active', true)
-        ->whereNull('parent_id')
-        ->orderBy('sort_order')
-        ->get();
-    $catImage = fn($cat) => $cat->image ? (\Illuminate\Support\Str::startsWith($cat->image, ['http://','https://']) ? $cat->image : \Illuminate\Support\Facades\Storage::url($cat->image)) : asset('assets/glowify/images/nav-category/' . (($cat->sort_order % 9) + 1) . '.jpeg');
+    $menuCategories = app('menuCategories');
+    $catImage = fn($cat) => $cat->image ? (\Illuminate\Support\Str::startsWith($cat->image, ['http://','https://']) ? $cat->image : \Illuminate\Support\Facades\Storage::disk('public')->url($cat->image)) : asset('assets/glowify/images/nav-category/' . (($cat->sort_order % 9) + 1) . '.jpeg');
+    $megaImage = \App\Models\Setting::get('menu.mega_menu_image');
+    $megaImageUrl = $megaImage ? \Illuminate\Support\Facades\Storage::disk('public')->url($megaImage) : asset('assets/glowify/images/offer.jpeg');
+    $megaTagline = \App\Models\Setting::get('menu.mega_menu_tagline', 'SPECIAL OFFER');
+    $megaTitle = \App\Models\Setting::get('menu.mega_menu_title', 'Save 20%');
+    $megaBtnText = \App\Models\Setting::get('menu.mega_menu_button_text', 'Shop Now');
 @endphp
 
 <div class="cs_bottom_header">
@@ -30,7 +30,7 @@
                         <div class="cs_nav_category_wrap cs_dropdown">
                             <span class="cs_nav_category_btn cs_dropdown_btn">All Categories</span>
                             <ul class="cs_nav_category_list cs_dropdown_content">
-                                @foreach($menuCats as $cat)
+                                @foreach($menuCategories as $cat)
                                     <li>
                                         <a href="{{ route('products.index', ['category' => $cat->slug]) }}">
                                             <img src="{{ $catImage($cat) }}" alt="{{ $cat->name }}">
@@ -55,7 +55,7 @@
                                         <li class="menu-item-has-children">
                                             <h4>Categories</h4>
                                             <ul>
-                                                @foreach($menuCats->take(6) as $cat)
+                                                @foreach($menuCategories->take(6) as $cat)
                                                     <li><a href="{{ route('products.index', ['category' => $cat->slug]) }}">{{ $cat->name }}</a></li>
                                                 @endforeach
                                             </ul>
@@ -89,11 +89,11 @@
                                             </ul>
                                         </li>
                                         <li class="menu-item-has-children">
-                                            <a href="{{ route('products.index', ['on_sale' => 1]) }}" class="cs_banner cs_style_5 cs_accent_light_bg cs_radius_10 overflow-hidden position-relative cs_bg_filed" data-src="{{ asset('assets/glowify/images/offer.jpeg') }}">
+                                            <a href="{{ route('products.index', ['on_sale' => 1]) }}" class="cs_banner cs_style_5 cs_accent_light_bg cs_radius_10 overflow-hidden position-relative cs_bg_filed" data-src="{{ $megaImageUrl }}">
                                                 <div class="cs_banner_text">
-                                                    <p class="cs_fs_24 cs_white_color cs_medium">SPECIAL OFFER</p>
-                                                    <h2 class="cs_fs_54 cs_white_color cs_normal cs_secondary_font">Save 20%</h2>
-                                                    <span class="cs_banner_lavel cs_accent_strong_bg cs_white_color cs_fs_18 cs_radius_5">Shop Now</span>
+                                                    <p class="cs_fs_24 cs_white_color cs_medium">{{ $megaTagline }}</p>
+                                                    <h2 class="cs_fs_54 cs_white_color cs_normal cs_secondary_font">{{ $megaTitle }}</h2>
+                                                    <span class="cs_banner_lavel cs_accent_strong_bg cs_white_color cs_fs_18 cs_radius_5">{{ $megaBtnText }}</span>
                                                 </div>
                                             </a>
                                         </li>
@@ -103,7 +103,7 @@
                                 <li class="menu-item-has-children">
                                     <a href="{{ route('products.index') }}">Categories</a>
                                     <ul>
-                                        @foreach($menuCats->take(8) as $cat)
+                                        @foreach($menuCategories->take(8) as $cat)
                                             <li><a href="{{ route('products.index', ['category' => $cat->slug]) }}">{{ $cat->icon ?? '' }} {{ $cat->name }}</a></li>
                                         @endforeach
                                     </ul>

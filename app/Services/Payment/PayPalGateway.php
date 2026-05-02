@@ -3,11 +3,12 @@
 namespace App\Services\Payment;
 
 use App\Contracts\PaymentGatewayInterface;
-use App\Models\Setting;
+use App\Services\Payment\Concerns\HasGatewayToggle;
 use Srmklive\PayPal\Services\PayPal as PayPalClient;
 
 class PayPalGateway implements PaymentGatewayInterface
 {
+    use HasGatewayToggle;
     private ?PayPalClient $client = null;
 
     private function client(): PayPalClient
@@ -32,8 +33,8 @@ class PayPalGateway implements PaymentGatewayInterface
                 'custom_id' => $metadata['order_id'] ?? null,
             ]],
             'application_context' => [
-                'return_url' => route('checkout.paypal.success'),
-                'cancel_url' => route('checkout.paypal.cancel'),
+                'return_url' => route('checkout.callback', 'paypal'),
+                'cancel_url' => route('checkout.cancel', 'paypal'),
             ],
         ]);
 
@@ -77,10 +78,5 @@ class PayPalGateway implements PaymentGatewayInterface
     public function getName(): string
     {
         return 'PayPal';
-    }
-
-    public function isEnabled(): bool
-    {
-        return (bool) Setting::get('payment_paypal_enabled', true);
     }
 }

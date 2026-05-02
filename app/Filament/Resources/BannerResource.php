@@ -16,9 +16,16 @@ use Filament\Tables\Table;
 class BannerResource extends Resource
 {
     protected static ?string $model = Banner::class;
+
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-photo';
-    protected static string|\UnitEnum|null $navigationGroup = 'Content';
-    protected static ?int $navigationSort = 1;
+    protected static string|\UnitEnum|null $navigationGroup = 'Homepage';
+    protected static ?int $navigationSort = 10;
+    protected static ?string $navigationLabel = 'Banners (Legacy)';
 
     public static function form(Schema $schema): Schema
     {
@@ -28,8 +35,8 @@ class BannerResource extends Resource
                 Forms\Components\Select::make('position')
                     ->options(['hero' => 'Hero', 'promo' => 'Promo', 'sidebar' => 'Sidebar'])
                     ->required()->default('hero'),
-                Forms\Components\FileUpload::make('image')->image()->required()->directory('banners')->columnSpanFull(),
-                Forms\Components\FileUpload::make('mobile_image')->image()->directory('banners')->label('Mobile Image'),
+                Forms\Components\FileUpload::make('image')->image()->required()->disk('public')->directory('banners')->columnSpanFull(),
+                Forms\Components\FileUpload::make('mobile_image')->image()->disk('public')->directory('banners')->label('Mobile Image'),
                 Forms\Components\TextInput::make('link')->url()->label('Link URL'),
                 Forms\Components\TextInput::make('button_text'),
                 Forms\Components\Textarea::make('subtitle'),

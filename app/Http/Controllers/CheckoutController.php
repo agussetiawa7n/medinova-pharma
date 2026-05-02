@@ -10,6 +10,7 @@ use App\Models\Address;
 use App\Enums\PaymentMethod;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 
 class CheckoutController extends Controller
 {
@@ -31,11 +32,14 @@ class CheckoutController extends Controller
         $addresses = $user->addresses()->latest()->get();
         $wallet    = $user->wallet;
 
+        $enabledMethods = $this->paymentManager->availableMethods();
+
         return view('checkout.index', array_merge($cartData, [
-            'addresses'       => $addresses,
-            'wallet'          => $wallet,
-            'paymentMethods'  => PaymentMethod::cases(),
-            'total'           => $cartData['grand_total'],
+            'addresses'      => $addresses,
+            'wallet'         => $wallet,
+            'paymentMethods' => PaymentMethod::cases(),
+            'enabledMethods' => $enabledMethods,
+            'total'          => $cartData['grand_total'],
         ]));
     }
 
@@ -67,7 +71,7 @@ class CheckoutController extends Controller
         // Build shipping details
         if ($request->address_id) {
             $address = Address::findOrFail($request->address_id);
-            abort_unless($address->user_id === Auth::id(), 403);
+            Gate::authorize('owns-address', $address);
             $shippingData = [
                 'shipping_name'           => trim(($address->first_name ?? '') . ' ' . ($address->last_name ?? '')),
                 'shipping_phone'          => $address->phone,
@@ -91,14 +95,29 @@ class CheckoutController extends Controller
         }
 
         $paymentMethod = PaymentMethod::from($request->payment_method);
+
+        // Wallet validation
+        if ($paymentMethod === PaymentMethod::Wallet) {
+            $wallet = \App\Models\Wallet::where('user_id', Auth::id())->first();
+            if (!$wallet || $wallet->balance <= 0) {
+                return back()->withErrors(['payment_method' => 'Wallet balance is empty. Please top up or choose another payment method.']);
+            }
+            $walletAmount = $this->cart->getSubtotal();
+        } else {
+            $walletAmount = (float) $request->input('wallet_amount', 0);
+        }
+
         $order = $this->orderService->createOrder(array_merge($shippingData, [
             'payment_method' => $paymentMethod,
-            'wallet_amount'  => (float) $request->input('wallet_amount', 0),
+            'wallet_amount'  => $walletAmount,
             'notes'          => $request->input('notes'),
         ]));
 
-        // COD, Wallet, and Wallet+Partial (wallet portion already debited in createOrder)
-        if (in_array($paymentMethod, [PaymentMethod::COD, PaymentMethod::Wallet, PaymentMethod::WalletPartial])) {
+        // COD / Wallet: mark as paid (wallet already debited in createOrder)
+        if (in_array($paymentMethod, [PaymentMethod::Wallet])) {
+            $this->orderService->markPaid($order, 'wallet');
+        }
+        if (in_array($paymentMethod, [PaymentMethod::COD, PaymentMethod::Wallet])) {
             return redirect()->route('checkout.success', $order);
         }
 
@@ -121,36 +140,45 @@ class CheckoutController extends Controller
 
     public function success(Order $order)
     {
-        abort_unless($order->user_id === Auth::id(), 403);
+        Gate::authorize('owns-order', $order);
         return view('checkout.success', compact('order'));
     }
 
-    public function razorpayCallback(Request $request)
+    public function handlePaymentCallback(string $gateway, Request $request)
     {
-        $gateway = $this->paymentManager->driver('razorpay');
-        $order   = Order::findOrFail($request->order_id ?? $request->notes['order_id'] ?? null);
-        $gateway->verifyPayment($request->all());
+        $order = match ($gateway) {
+            'razorpay' => Order::findOrFail($request->order_id ?? $request->notes['order_id'] ?? null),
+            'stripe'   => Order::where('payment_reference', $request->payment_intent)->firstOrFail(),
+            'paypal'   => Order::findOrFail(session('paypal_order_id')),
+            default    => abort(400, 'Unknown payment gateway.'),
+        };
+
+        Gate::authorize('owns-order', $order);
+
+        if (!$this->paymentManager->driver($gateway)->verifyPayment($request->all())) {
+            return redirect()->route('checkout')->with('error', 'Payment verification failed. Please try again or contact support.');
+        }
+
+        $paymentId = match ($gateway) {
+            'razorpay' => $request->razorpay_payment_id ?? '',
+            'stripe'   => $request->payment_intent ?? '',
+            'paypal'   => $request->token ?? '',
+            default    => '',
+        };
+        $this->orderService->markPaid($order, $paymentId);
+
         return redirect()->route('checkout.success', $order);
     }
 
-    public function stripeSuccess(Request $request)
+    public function handlePaymentCancel(string $gateway)
     {
-        $order = Order::where('payment_reference', $request->payment_intent)->firstOrFail();
-        abort_unless($order->user_id === Auth::id(), 403);
-        $this->paymentManager->driver('stripe')->verifyPayment($request->all());
-        return redirect()->route('checkout.success', $order);
-    }
+        $message = match ($gateway) {
+            'razorpay' => 'Razorpay payment cancelled.',
+            'stripe'   => 'Stripe payment cancelled.',
+            'paypal'   => 'PayPal payment cancelled.',
+            default    => 'Payment cancelled.',
+        };
 
-    public function paypalSuccess(Request $request)
-    {
-        $order = Order::findOrFail(session('paypal_order_id'));
-        abort_unless($order->user_id === Auth::id(), 403);
-        $this->paymentManager->driver('paypal')->verifyPayment($request->all());
-        return redirect()->route('checkout.success', $order);
-    }
-
-    public function paypalCancel()
-    {
-        return redirect()->route('checkout')->with('error', 'PayPal payment cancelled.');
+        return redirect()->route('checkout')->with('error', $message);
     }
 }

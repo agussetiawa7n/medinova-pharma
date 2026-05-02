@@ -26,9 +26,12 @@ class ProductController extends Controller
         $product = Product::query()
             ->where('is_active', true)
             ->where('slug', $slug)
-            ->with(['brand', 'category', 'variants', 'reviews.user'])
+            ->with(['brand', 'category', 'variants'])
             ->withCount('reviews')
+            ->withAvg('reviews', 'rating')
             ->firstOrFail();
+
+        $product->loadMissing('reviews.user');
 
         $related = Product::query()
             ->where('is_active', true)
@@ -58,7 +61,9 @@ class ProductController extends Controller
 
         $query = Product::query()
             ->where('is_active', true)
-            ->with(['brand', 'category']);
+            ->with(['brand', 'category'])
+            ->withCount('reviews')
+            ->withAvg('reviews', 'rating');
 
         $term = $validated['q'] ?? $validated['search'] ?? null;
         if ($term) {

@@ -6,6 +6,7 @@ use App\Models\Address;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 
 class AddressController extends Controller
 {
@@ -82,6 +83,6 @@ class AddressController extends Controller
 
     private function authorizeOwner(Address $address): void
     {
-        abort_unless($address->user_id === Auth::id(), 403);
+        Gate::authorize('owns-address', $address);
     }
 }

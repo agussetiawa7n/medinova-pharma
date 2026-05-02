@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\Session;
 
 class CartService
 {
+    public function __construct(
+        private readonly PricingService $pricing,
+    ) {}
+
     public function getCart(): Cart
     {
         if (Auth::check()) {
@@ -21,8 +25,9 @@ class CartService
             if ($sessionId) {
                 $guestCart = Cart::where('session_id', $sessionId)->first();
                 if ($guestCart) {
+                    // Pass cart to avoid N getCart() calls inside the loop
                     foreach ($guestCart->items as $item) {
-                        $this->addToCart($item->product_id, $item->quantity, $item->product_variant_id);
+                        $this->addToCart($item->product_id, $item->quantity, $item->product_variant_id, $cart);
                     }
                     $guestCart->delete();
                 }
@@ -38,13 +43,13 @@ class CartService
         return $cart->load('items.product', 'items.variant');
     }
 
-    public function addToCart(int $productId, int $quantity = 1, ?int $variantId = null): CartItem
+    public function addToCart(int $productId, int $quantity = 1, ?int $variantId = null, ?Cart $cart = null): CartItem
     {
-        $cart    = $this->getCart();
+        $cart  ??= $this->getCart();
         $product = Product::findOrFail($productId);
         $variant = $variantId ? ProductVariant::findOrFail($variantId) : null;
 
-        $price   = $variant ? $variant->price : $product->price;
+        $price = $variant ? $variant->price : $product->price;
 
         $item = $cart->items()
             ->where('product_id', $productId)
@@ -65,9 +70,16 @@ class CartService
         return $item;
     }
 
-    public function addItem(int $productId, int $quantity = 1, ?int $variantId = null): CartItem
+    public function addItem(int $productId, int $quantity = 1, ?int $variantId = null): array
     {
-        return $this->addToCart($productId, $quantity, $variantId);
+        $cart = $this->getCart();
+        $this->addToCart($productId, $quantity, $variantId, $cart);
+
+        // Refresh the items relation to get accurate count including the new item
+        return [
+            'count'   => (int) $cart->items()->sum('quantity'),
+            'message' => 'Added to cart',
+        ];
     }
 
     public function updateItem(int $itemId, int $quantity): void
@@ -85,7 +97,10 @@ class CartService
     public function removeItem(int $itemId): void
     {
         $cart = $this->getCart();
-        $cart->items()->findOrFail($itemId)->delete();
+        $item = $cart->items()->find($itemId);
+        if ($item) {
+            $item->delete();
+        }
     }
 
     public function clearCart(): void
@@ -93,19 +108,35 @@ class CartService
         $this->getCart()->items()->delete();
     }
 
-    public function getItemCount(): int
-    {
-        return $this->getCart()->items->sum('quantity');
-    }
-
     public function getCartCount(): int
     {
-        return $this->getItemCount();
+        // Lightweight: find existing cart, don't create one just to count
+        if (Auth::check()) {
+            $cart = Cart::where('user_id', Auth::id())->first();
+        } else {
+            $sid = Session::get('cart_session_id');
+            $cart = $sid ? Cart::where('session_id', $sid)->first() : null;
+        }
+
+        if (!$cart) return 0;
+
+        return (int) $cart->items()->sum('quantity');
     }
 
     public function getSubtotal(): float
     {
-        return $this->getCart()->subtotal;
+        // Lightweight: find the cart ID without eager-loading all relations
+        if (Auth::check()) {
+            $cartId = Cart::where('user_id', Auth::id())->value('id');
+        } else {
+            $sid = Session::get('cart_session_id');
+            $cartId = $sid ? Cart::where('session_id', $sid)->value('id') : null;
+        }
+
+        if (!$cartId) return 0.0;
+
+        return (float) CartItem::where('cart_id', $cartId)
+            ->sum(\Illuminate\Support\Facades\DB::raw('unit_price * quantity'));
     }
 
     public function applyCoupon(string $code): array
@@ -121,7 +152,7 @@ class CartService
         if ($subtotal < $coupon->min_order_amount) {
             return [
                 'success' => false,
-                'message' => "Minimum order amount is ₹{$coupon->min_order_amount} for this coupon.",
+                'message' => 'Minimum order amount is $' . $coupon->min_order_amount . ' for this coupon.',
             ];
         }
 
@@ -142,38 +173,22 @@ class CartService
 
     public function getCartData(): array
     {
-        $cart  = $this->getCart();
-        $cart->load(['items.product', 'items.variant']);
+        $cart  = $this->getCart(); // getCart() already eager-loads items.product + items.variant
         $items = $cart->items;
 
-        $subtotal = $items->sum(fn ($i) => round($i->unit_price * $i->quantity, 2));
-
-        $coupon   = null;
-        $discount = 0;
-        if ($cart->coupon_code) {
-            $coupon = \App\Models\Coupon::where('code', $cart->coupon_code)->first();
-            if ($coupon) {
-                $discount = $coupon->calculateDiscount($subtotal);
-            }
-        }
-
-        $freeShippingAt = (int) (\App\Models\Setting::get('site.free_shipping_threshold') ?? 499);
-        $flatShipping   = (int) (\App\Models\Setting::get('site.delivery_fee') ?? 50);
-        $shipping       = $subtotal > 0 && $subtotal < $freeShippingAt ? $flatShipping : 0;
-        $tax            = round(($subtotal - $discount) * 0.18, 2);
-        $total          = round($subtotal - $discount + $shipping + $tax, 2);
+        $pricing = $this->pricing->calculate($cart);
 
         return [
             'items'       => $items,
             'count'       => $items->sum('quantity'),
-            'subtotal'    => round($subtotal, 2),
-            'discount'    => round($discount, 2),
-            'coupon'      => $coupon,
+            'subtotal'    => $pricing['subtotal'],
+            'discount'    => $pricing['discount'],
+            'coupon'      => $pricing['coupon'],
             'coupon_code' => $cart->coupon_code,
-            'shipping'    => $shipping,
-            'tax'         => $tax,
-            'total'       => $total,
-            'grand_total' => $total,
+            'shipping'    => $pricing['shipping'],
+            'tax'         => $pricing['tax'],
+            'total'       => $pricing['total'],
+            'grand_total' => $pricing['grandTotal'],
         ];
     }
 }

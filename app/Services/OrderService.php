@@ -16,20 +16,37 @@ class OrderService
     public function __construct(
         private readonly CartService            $cartService,
         private readonly PaymentGatewayManager  $paymentManager,
+        private readonly PricingService         $pricingService,
     ) {}
 
     public function createOrder(array $data): Order
     {
         return DB::transaction(function () use ($data) {
-            $cart     = $this->cartService->getCart();
-            $coupon   = $cart->coupon;
-            $subtotal = $cart->subtotal;
-
-            $discount  = $coupon ? $coupon->calculateDiscount($subtotal) : 0;
-            $shipping  = $this->calculateShipping($data);
-            $tax       = $this->calculateTax($subtotal - $discount);
+            $cart      = $this->cartService->getCart();
+            $coupon    = $cart->coupon;
             $walletAmt = $data['wallet_amount'] ?? 0;
-            $total     = max(0, $subtotal - $discount + $shipping + $tax - $walletAmt);
+
+            // Re-validate coupon at order time
+            if ($coupon && !$coupon->isValid()) {
+                $cart->update(['coupon_code' => null]);
+                $coupon = null;
+            }
+
+            // For full wallet payment: compute full amount first, then use it
+            $isFullWallet = ($data['payment_method'] === PaymentMethod::Wallet);
+            if ($isFullWallet) {
+                $prePricing = $this->pricingService->calculate($cart, 0);
+                // Full order amount = subtotal - discount + shipping + tax
+                $walletAmt = $prePricing['subtotal'] - $prePricing['discount']
+                    + $prePricing['shipping'] + $prePricing['tax'];
+            }
+
+            $pricing  = $this->pricingService->calculate($cart, $walletAmt);
+            $subtotal = $pricing['subtotal'];
+            $discount = $pricing['discount'];
+            $shipping = $pricing['shipping'];
+            $tax      = $pricing['tax'];
+            $total    = $pricing['grandTotal'];
 
             $order = Order::create([
                 'user_id'                => Auth::id(),
@@ -70,18 +87,17 @@ class OrderService
                 ]);
 
                 if ($item->product->track_inventory) {
-                    if ($item->variant) {
-                        $item->variant->decrement('stock_quantity', $item->quantity);
-                    } else {
-                        $item->product->decrement('stock_quantity', $item->quantity);
-                    }
+                    $this->adjustStock($item, 'decrement');
                 }
             }
 
             // Debit wallet if used
             if ($walletAmt > 0) {
                 $wallet = Wallet::where('user_id', Auth::id())->first();
-                $wallet?->debit($walletAmt, 'Order payment', 'order', $order->id);
+                if (!$wallet || !$wallet->hasSufficientBalance($walletAmt)) {
+                    throw new \RuntimeException('Insufficient wallet balance.');
+                }
+                $wallet->debit($walletAmt, 'Order payment', 'order', $order->id);
             }
 
             // Increment coupon usage
@@ -143,11 +159,7 @@ class OrderService
 
         // Restore stock
         foreach ($order->items as $item) {
-            if ($item->variant_id) {
-                \App\Models\ProductVariant::find($item->product_variant_id)?->increment('stock_quantity', $item->quantity);
-            } else {
-                $item->product?->increment('stock_quantity', $item->quantity);
-            }
+            $this->adjustStock($item, 'increment');
         }
 
         // Refund wallet amount if applicable
@@ -157,15 +169,17 @@ class OrderService
         }
     }
 
-    private function calculateShipping(array $data): float
+    private function adjustStock($item, string $direction): void
     {
-        return \App\Models\Setting::get('shipping_flat_rate', 50);
+        $target = $item->variant ?? $item->product;
+
+        if (!$target) return;
+
+        if ($direction === 'increment') {
+            $target->increment('stock_quantity', $item->quantity);
+        } else {
+            $target->decrement('stock_quantity', $item->quantity);
+        }
     }
 
-    private function calculateTax(float $amount): float
-    {
-        $rate = \App\Models\Setting::get('tax_rate', 0) / 100;
-
-        return round($amount * $rate, 2);
-    }
 }

@@ -28,7 +28,7 @@ class Banner extends Model
             $path = $this->image;
             if (!$path) return null;
             if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) return $path;
-            return Storage::url($path);
+            return Storage::disk('public')->url($path);
         });
     }
 

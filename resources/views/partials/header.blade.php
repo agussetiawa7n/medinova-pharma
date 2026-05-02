@@ -21,7 +21,7 @@
                                 </svg>
                             </button>
                             <ul class="cs_header_category_list cs_mp_0 cs_dropdown_content">
-                                @foreach(\App\Models\Category::query()->where('show_in_menu', true)->where('is_active', true)->whereNull('parent_id')->orderBy('sort_order')->limit(8)->get() as $cat)
+                                @foreach(app('menuCategories')->take(8) as $cat)
                                     <li>
                                         <label>
                                             <input type="radio" name="category" value="{{ $cat->slug }}" {{ request('category') === $cat->slug ? 'checked' : '' }}>

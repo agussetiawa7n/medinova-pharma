@@ -3,12 +3,12 @@
 namespace App\Services\Payment;
 
 use App\Contracts\PaymentGatewayInterface;
-use App\Models\Setting;
+use App\Services\Payment\Concerns\HasGatewayToggle;
 use App\Models\Wallet;
-use App\Models\Order;
 
 class WalletGateway implements PaymentGatewayInterface
 {
+    use HasGatewayToggle;
     public function createPayment(float $amount, string $currency, array $metadata = []): array
     {
         $userId = $metadata['user_id'] ?? null;
@@ -24,20 +24,10 @@ class WalletGateway implements PaymentGatewayInterface
 
     public function verifyPayment(array $payload): bool
     {
-        $userId  = $payload['user_id'] ?? null;
-        $amount  = $payload['amount'] ?? 0;
-        $orderId = $payload['order_id'] ?? null;
-
-        if (!$userId || !$amount) return false;
-
-        $wallet = Wallet::where('user_id', $userId)->first();
-
-        if (!$wallet || !$wallet->hasSufficientBalance($amount)) {
-            return false;
-        }
-
-        $wallet->debit($amount, 'Order payment', 'order', $orderId);
-
+        // Wallet debit already happens in OrderService::createOrder().
+        // This gateway is never called through handlePaymentCallback() —
+        // CheckoutController routes Wallet/WalletPartial directly to markPaid().
+        // Returning true prevents a double-debit if the callback path is ever reached.
         return true;
     }
 
@@ -50,10 +40,5 @@ class WalletGateway implements PaymentGatewayInterface
     public function getName(): string
     {
         return 'Wallet';
-    }
-
-    public function isEnabled(): bool
-    {
-        return (bool) Setting::get('payment_wallet_enabled', true);
     }
 }

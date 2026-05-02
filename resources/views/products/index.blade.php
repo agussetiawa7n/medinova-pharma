@@ -104,7 +104,7 @@
 
                     {{-- Price --}}
                     <div class="bg-white border rounded-3 p-3 p-md-4 mb-3">
-                        <h6 class="text-uppercase fw-bold mb-3" style="font-size:12px; letter-spacing:1.5px; color:#6B7280;">Price (₹)</h6>
+                        <h6 class="text-uppercase fw-bold mb-3" style="font-size:12px; letter-spacing:1.5px; color:#6B7280;">Price ($)</h6>
                         <div class="row g-2">
                             <div class="col-6">
                                 <input type="number" min="0" class="form-control" placeholder="Min"
@@ -145,7 +145,7 @@
                 <div class="d-flex align-items-center gap-2">
                     <label for="mnSort" class="text-nowrap text-muted" style="font-size:13.5px;">Sort by</label>
                     <select id="mnSort" class="form-select" style="min-width:180px; border-radius:10px;"
-                            x-data @change="$dispatch('filters-updated', {...window.currentFilters, sort: $event.target.value})">
+                            x-data @change="window.currentFilters.sort = $event.target.value; $dispatch('filters-updated', window.currentFilters)">
                         <option value="newest" {{ ($initialFilters['sort'] ?? '') === 'newest' ? 'selected' : '' }}>Newest First</option>
                         <option value="popular" {{ ($initialFilters['sort'] ?? '') === 'popular' ? 'selected' : '' }}>Most Popular</option>
                         <option value="rating" {{ ($initialFilters['sort'] ?? '') === 'rating' ? 'selected' : '' }}>Top Rated</option>
@@ -181,7 +181,7 @@
 
 @push('scripts')
 <script>
-    const INITIAL_FILTERS = @json($initialFilters ?? []);
+    const INITIAL_FILTERS = @json((object) ($initialFilters ?? []));
 
     window.currentFilters = {
         q:        INITIAL_FILTERS.q || INITIAL_FILTERS.search || '',
@@ -194,24 +194,5 @@
         on_sale:  INITIAL_FILTERS.on_sale ? 1 : 0,
     };
 
-    document.addEventListener('alpine:init', () => {
-        Alpine.data('shopFilters', () => ({
-            filters: { ...window.currentFilters },
-            apply() {
-                const cleaned = Object.fromEntries(
-                    Object.entries(this.filters).filter(([k, v]) => v !== '' && v !== false && v !== null && v !== undefined)
-                );
-                // Coerce booleans to 1/0
-                if (cleaned.in_stock) cleaned.in_stock = 1; else delete cleaned.in_stock;
-                if (cleaned.on_sale)  cleaned.on_sale  = 1; else delete cleaned.on_sale;
-                window.currentFilters = cleaned;
-                window.dispatchEvent(new CustomEvent('filters-updated', { detail: cleaned }));
-            },
-            reset() {
-                this.filters = { q:'', category:'', brand:'', minPrice:'', maxPrice:'', sort:'newest', in_stock:false, on_sale:false };
-                this.apply();
-            },
-        }));
-    });
 </script>
 @endpush

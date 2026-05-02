@@ -23,12 +23,12 @@ class StatsOverview extends BaseWidget
         $outOfStock     = Product::where('stock_quantity', 0)->count();
 
         return [
-            Stat::make("Today's Revenue", '₹' . number_format($todayRevenue, 2))
+            Stat::make("Today's Revenue", money($todayRevenue))
                 ->description('Paid orders today')
                 ->descriptionIcon('heroicon-m-arrow-trending-up')
                 ->color('success'),
 
-            Stat::make('Monthly Revenue', '₹' . number_format($monthRevenue, 2))
+            Stat::make('Monthly Revenue', money($monthRevenue))
                 ->description(now()->format('F Y'))
                 ->descriptionIcon('heroicon-m-calendar')
                 ->color('primary'),

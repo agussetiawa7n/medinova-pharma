@@ -2,8 +2,11 @@
 
 namespace App\Enums;
 
+use App\Concerns\HasLabel;
+
 enum OrderStatus: string
 {
+    use HasLabel;
     case Pending    = 'pending';
     case Confirmed  = 'confirmed';
     case Processing = 'processing';
@@ -36,12 +39,5 @@ enum OrderStatus: string
             self::Cancelled  => 'danger',
             self::Refunded   => 'gray',
         };
-    }
-
-    public static function options(): array
-    {
-        return collect(self::cases())->mapWithKeys(
-            fn ($case) => [$case->value => $case->label()]
-        )->toArray();
     }
 }

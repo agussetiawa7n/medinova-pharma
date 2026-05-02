@@ -48,7 +48,7 @@
                     $stats = [
                         ['label' => 'Total Orders',    'value' => auth()->user()->orders()->count(),                                                     'color' => 'accent'],
                         ['label' => 'Wishlist Items',  'value' => $wishlistCount,                                                                         'color' => 'accent_strong'],
-                        ['label' => 'Wallet Balance',  'value' => '₹'.number_format($wallet?->balance ?? 0, 2),                                           'color' => 'primary'],
+                        ['label' => 'Wallet Balance',  'value' => '$'.number_format($wallet?->balance ?? 0, 2),                                           'color' => 'primary'],
                         ['label' => 'Active Orders',   'value' => auth()->user()->orders()->whereNotIn('status', ['delivered','cancelled'])->count(),    'color' => 'accent'],
                     ];
                 @endphp
@@ -103,7 +103,7 @@
                                             <td><a href="{{ route('orders.show', $order) }}">#{{ $order->order_number }}</a></td>
                                             <td>{{ $order->created_at->format('d/m/Y') }}</td>
                                             <td class="{{ $statusColor }}">{{ $order->status->label() }}</td>
-                                            <td>₹{{ number_format($order->total, 2) }}</td>
+                                            <td>${{ number_format($order->total, 2) }}</td>
                                             <td class="text-end">
                                                 <a class="cs_text_btn" href="{{ route('orders.show', $order) }}">
                                                     <span>View Details</span>

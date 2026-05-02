@@ -53,42 +53,42 @@
                                         <small style="display:block; color:#9CA3AF;">{{ $item->variant_name }}</small>
                                     @endif
                                 </span>
-                                <span class="cs_light">₹{{ number_format($item->total, 2) }}</span>
+                                <span class="cs_light">${{ number_format($item->total, 2) }}</span>
                             </li>
                         @endforeach
 
                         <li class="cs_card_price_list_seperator_up">
                             <span class="cs_light">Subtotal</span>
-                            <span class="cs_semibold cs_primary_color">₹{{ number_format($order->subtotal, 2) }}</span>
+                            <span class="cs_semibold cs_primary_color">${{ number_format($order->subtotal, 2) }}</span>
                         </li>
                         @if($order->discount_amount > 0)
                             <li>
                                 <span class="cs_light">Discount</span>
-                                <span class="cs_semibold cs_accent_color">−₹{{ number_format($order->discount_amount, 2) }}</span>
+                                <span class="cs_semibold cs_accent_color">−${{ number_format($order->discount_amount, 2) }}</span>
                             </li>
                         @endif
                         @if($order->shipping_amount > 0)
                             <li>
                                 <span class="cs_light">Shipping Fee</span>
-                                <span class="cs_semibold cs_primary_color">₹{{ number_format($order->shipping_amount, 2) }}</span>
+                                <span class="cs_semibold cs_primary_color">${{ number_format($order->shipping_amount, 2) }}</span>
                             </li>
                         @endif
                         @if($order->tax_amount > 0)
                             <li>
                                 <span class="cs_light">Tax (18% GST)</span>
-                                <span class="cs_semibold cs_primary_color">₹{{ number_format($order->tax_amount, 2) }}</span>
+                                <span class="cs_semibold cs_primary_color">${{ number_format($order->tax_amount, 2) }}</span>
                             </li>
                         @endif
                         @if($order->wallet_amount_used > 0)
                             <li>
                                 <span class="cs_light">Wallet Used</span>
-                                <span class="cs_semibold cs_accent_color">−₹{{ number_format($order->wallet_amount_used, 2) }}</span>
+                                <span class="cs_semibold cs_accent_color">−${{ number_format($order->wallet_amount_used, 2) }}</span>
                             </li>
                         @endif
 
                         <li class="cs_total_price">
                             <span class="cs_medium cs_fs_24 cs_primary_color">Total</span>
-                            <span class="cs_medium cs_fs_24 cs_primary_color">₹{{ number_format($order->total, 2) }}</span>
+                            <span class="cs_medium cs_fs_24 cs_primary_color">${{ number_format($order->total, 2) }}</span>
                         </li>
                     </ul>
 

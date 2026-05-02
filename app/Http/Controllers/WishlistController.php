@@ -21,12 +21,17 @@ class WishlistController extends Controller
         return view('wishlist.index', compact('items'));
     }
 
+    public function count()
+    {
+        $count = 0;
+        if (Auth::check()) {
+            $count = Wishlist::where('user_id', Auth::id())->count();
+        }
+        return response()->json(['count' => $count]);
+    }
+
     public function toggle(Request $request)
     {
-        if (!Auth::check()) {
-            return response()->json(['message' => 'Please sign in to use wishlist'], 401);
-        }
-
         $request->validate(['product_id' => 'required|integer|exists:products,id']);
 
         $existing = Wishlist::where('user_id', Auth::id())

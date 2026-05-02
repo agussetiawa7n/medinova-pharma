@@ -4,9 +4,14 @@
 
 @section('content')
 
+@php
+    $checkoutBcTitle = \App\Models\Setting::get('checkout.breadcrumb_title', 'Complete Your Order');
+    $checkoutBcImg = \App\Models\Setting::get('checkout.breadcrumb_image');
+    $checkoutBcBg = $checkoutBcImg ? \Illuminate\Support\Facades\Storage::disk('public')->url($checkoutBcImg) : asset('assets/glowify/images/breadcamp_bg_11.jpg');
+@endphp
 @include('partials.breadcamp', [
-    'bcTitle' => 'Complete Your Order',
-    'bcBg' => asset('assets/glowify/images/breadcamp_bg_11.jpg'),
+    'bcTitle' => $checkoutBcTitle,
+    'bcBg' => $checkoutBcBg,
     'bcCrumbs' => [
         ['label' => 'Home', 'url' => route('home')],
         ['label' => 'Cart', 'url' => route('cart')],
@@ -141,7 +146,7 @@
                             <li>
                                 <div class="cs_order_summary_list_title">
                                     <h3 class="mb-0 cs_secondary_font cs_semibold cs_fs_16" style="flex:1;">{{ $item->product->name }}</h3>
-                                    <h3 class="mb-0 cs_secondary_font cs_semibold cs_fs_16 cs_accent_color">₹{{ number_format($item->unit_price * $item->quantity, 2) }}</h3>
+                                    <h3 class="mb-0 cs_secondary_font cs_semibold cs_fs_16 cs_accent_color">${{ number_format($item->unit_price * $item->quantity, 2) }}</h3>
                                 </div>
                                 <p>Quantity: <span class="cs_primary_color">{{ $item->quantity }}</span></p>
                                 @if($item->variant)
@@ -156,29 +161,29 @@
                     <ul class="cs_card_price_list cs_type_1 cs_mp_0">
                         <li>
                             <span class="cs_light">Subtotal</span>
-                            <span class="cs_semibold cs_primary_color">₹{{ number_format($subtotal, 2) }}</span>
+                            <span class="cs_semibold cs_primary_color">${{ number_format($subtotal, 2) }}</span>
                         </li>
                         @if(!empty($discount) && $discount > 0)
                             <li>
                                 <span class="cs_light">Discount @if(!empty($coupon))({{ $coupon->code }})@endif</span>
-                                <span class="cs_semibold cs_accent_color">−₹{{ number_format($discount, 2) }}</span>
+                                <span class="cs_semibold cs_accent_color">−${{ number_format($discount, 2) }}</span>
                             </li>
                         @endif
                         <li>
                             <span class="cs_light">Shipping Fee</span>
                             <span class="cs_semibold cs_primary_color">
-                                {{ ($shipping ?? 0) > 0 ? '₹' . number_format($shipping, 2) : 'FREE' }}
+                                {{ ($shipping ?? 0) > 0 ? '$' . number_format($shipping, 2) : 'FREE' }}
                             </span>
                         </li>
                         @if(!empty($tax) && $tax > 0)
                             <li>
                                 <span class="cs_light">Tax (18% GST)</span>
-                                <span class="cs_semibold cs_primary_color">₹{{ number_format($tax, 2) }}</span>
+                                <span class="cs_semibold cs_primary_color">${{ number_format($tax, 2) }}</span>
                             </li>
                         @endif
                         <li class="cs_total_price">
                             <span class="cs_fs_18 cs_primary_color">Total</span>
-                            <span class="cs_fs_18 cs_primary_color">₹{{ number_format($total, 2) }}</span>
+                            <span class="cs_fs_18 cs_primary_color">${{ number_format($total, 2) }}</span>
                         </li>
                     </ul>
 
@@ -191,39 +196,42 @@
 
                     <ul class="cs_payment_method_list cs_mp_0">
                         @php
-                            $methods = [
-                                ['value' => 'cod',      'label' => 'Cash on Delivery'],
-                                ['value' => 'razorpay', 'label' => 'Razorpay (UPI / Card / Net Banking)'],
-                                ['value' => 'stripe',   'label' => 'Stripe (International Card)'],
-                                ['value' => 'paypal',   'label' => 'PayPal'],
+                            $allMethods = [
+                                ['value' => 'cod',             'label' => 'Cash on Delivery'],
+                                ['value' => 'razorpay',        'label' => 'Razorpay (UPI / Card / Net Banking)'],
+                                ['value' => 'stripe',          'label' => 'Stripe (International Card)'],
+                                ['value' => 'paypal',          'label' => 'PayPal'],
+                                ['value' => 'wallet',          'label' => 'Pay via Wallet (Balance: $' . number_format($wallet?->balance ?? 0, 2) . ')'],
                             ];
-                            if (($wallet?->balance ?? 0) > 0) {
-                                $methods[] = ['value' => 'wallet', 'label' => 'Wallet (Balance: ₹' . number_format($wallet->balance, 2) . ')'];
-                                $methods[] = ['value' => 'wallet_partial', 'label' => 'Wallet + Gateway'];
-                            }
+
+                            $methods = array_filter($allMethods, function ($m) use ($enabledMethods) {
+                                return in_array($m['value'], $enabledMethods);
+                            });
                         @endphp
 
-                        @foreach($methods as $m)
+                        @if(empty($methods))
                             <li>
-                                <div class="cs_custom_checkbox cs_style_1 cs_light">
-                                    <input name="payment_method" type="radio" value="{{ $m['value'] }}" x-model="paymentMethod" id="pay_{{ $m['value'] }}">
-                                    <span>{{ $m['label'] }}</span>
-                                </div>
+                                <p class="cs_light mb-0">No payment methods available. Please contact support.</p>
                             </li>
-                        @endforeach
+                        @else
+                            @foreach($methods as $m)
+                                <li>
+                                    <div class="cs_custom_checkbox cs_style_1 cs_light">
+                                        <input name="payment_method" type="radio" value="{{ $m['value'] }}" x-model="paymentMethod" id="pay_{{ $m['value'] }}">
+                                        <span>{{ $m['label'] }}</span>
+                                    </div>
+                                </li>
+                            @endforeach
+                        @endif
                     </ul>
 
-                    {{-- Wallet partial amount input --}}
-                    <div x-show="paymentMethod === 'wallet_partial'" x-cloak class="mt-3">
-                        <label class="cs_semibold">Wallet Amount to Use (₹)</label>
-                        <input type="number" name="wallet_amount" class="cs_form_field" step="0.01"
-                               min="0" :max="Math.min(walletBalance, orderTotal)"
-                               x-model="walletAmount">
-                        <p class="mt-1 mb-0 cs_light" style="font-size:12.5px;">
-                            Max: ₹<span x-text="Math.min(walletBalance, orderTotal).toFixed(2)"></span>.
-                            Remaining ₹<span x-text="(orderTotal - Math.min(walletAmount, walletBalance, orderTotal)).toFixed(2)"></span> charged via gateway.
-                        </p>
-                    </div>
+                    {{-- Contact for other payment methods --}}
+                    <li>
+                        <div class="cs_light mt-2">
+                            <i class="fa-solid fa-phone me-1" style="color:#e61f7f;"></i>
+                            <a href="{{ route('contact') }}" style="color:#e61f7f; text-decoration:underline;">Contact us</a> for other payment methods.
+                        </div>
+                    </li>
 
                     <div class="cs_height_40 cs_height_lg_30"></div>
 

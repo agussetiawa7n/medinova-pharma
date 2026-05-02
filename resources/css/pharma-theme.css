@@ -173,6 +173,17 @@ body {
 .mn-product-cta .btn { width: 100%; border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: 600; }
 
 /* ----- Offcanvas cart ----- */
+[x-cloak] { display: none !important; }
+.mn-cart-offcanvas { width: 420px !important; max-width: 92vw; }
+.mn-cart-body { display: flex !important; flex-direction: column; flex: 1; min-height: 0; }
+/* sections managed by x-show — display set via CSS, NOT inline style */
+.mn-cart-section { display: flex; flex: 1; }
+.mn-cart-section-loading { align-items: center; justify-content: center; }
+.mn-cart-section-items { flex-direction: column; }
+.mn-cart-section-empty { flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+.mn-cart-pending { overflow-y: auto; flex-shrink: 0; }
+/* items scroll area */
+.mn-cart-items-scroll { flex-grow: 1; overflow-y: auto; }
 .mn-cart-offcanvas { width: 420px !important; max-width: 92vw; }
 .mn-cart-item { display: grid; grid-template-columns: 72px 1fr auto; gap: 12px; padding: 14px 0; border-bottom: 1px solid #EDEFF2; }
 .mn-cart-item img { width: 72px; height: 72px; object-fit: contain; background: #F8FAFB; border-radius: 8px; padding: 6px; }

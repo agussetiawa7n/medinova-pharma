@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Services\WalletService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Razorpay\Api\Api as RazorpayApi;
 
 class WalletController extends Controller
 {
@@ -21,76 +20,31 @@ class WalletController extends Controller
         return view('wallet.index', compact('wallet', 'transactions'));
     }
 
-    public function topup(Request $request)
+    public function addBalance()
     {
-        $request->validate([
-            'amount' => 'required|numeric|min:10|max:50000',
-        ]);
+        $externalEnabled = $this->walletService->isExternalTopupEnabled();
+        $purchaseUrl     = $this->walletService->getPurchaseUrl();
+        $tutorialVideo   = $this->walletService->getTutorialVideoUrl();
 
-        $amount = (float) $request->amount;
-        $user   = Auth::user();
-
-        $key    = config('services.razorpay.key');
-        $secret = config('services.razorpay.secret');
-
-        if (empty($key) || empty($secret)) {
-            return back()->with('error', 'Online payment is not configured. Please contact support.');
-        }
-
-        $api = new RazorpayApi($key, $secret);
-
-        $order = $api->order->create([
-            'amount'   => (int) ($amount * 100),
-            'currency' => 'INR',
-            'receipt'  => 'wallet-topup-' . $user->id . '-' . time(),
-            'notes'    => ['user_id' => $user->id, 'purpose' => 'wallet_topup'],
-        ]);
-
-        return view('wallet.topup-payment', [
-            'razorpayOrder' => $order,
-            'amount'        => $amount,
-            'razorpayKey'   => $key,
-            'user'          => $user,
-        ]);
+        return view('wallet.add-balance', compact('externalEnabled', 'purchaseUrl', 'tutorialVideo'));
     }
 
-    public function topupCallback(Request $request)
+    public function redeemCode(Request $request)
     {
         $request->validate([
-            'razorpay_payment_id' => 'required|string',
-            'razorpay_order_id'   => 'required|string',
-            'razorpay_signature'  => 'required|string',
+            'code' => 'required|string|min:10|max:5000',
         ]);
-
-        $key    = config('services.razorpay.key');
-        $secret = config('services.razorpay.secret');
-
-        $api = new RazorpayApi($key, $secret);
-
-        try {
-            $api->utility->verifyPaymentSignature([
-                'razorpay_order_id'   => $request->razorpay_order_id,
-                'razorpay_payment_id' => $request->razorpay_payment_id,
-                'razorpay_signature'  => $request->razorpay_signature,
-            ]);
-        } catch (\Exception) {
-            return redirect()->route('wallet')->with('error', 'Payment verification failed. Please contact support.');
-        }
-
-        // Fetch the order to get the amount
-        $rzpOrder = $api->order->fetch($request->razorpay_order_id);
-        $amount   = $rzpOrder->amount / 100;
 
         $user = Auth::user();
-        $this->walletService->credit(
-            $user->id,
-            $amount,
-            "Wallet top-up via Razorpay (#{$request->razorpay_payment_id})",
-            'razorpay',
-            null
-        );
 
-        return redirect()->route('wallet')->with('success', '₹' . number_format($amount, 2) . ' added to your wallet successfully!');
+        try {
+            $result = $this->walletService->redeemCode($user->id, $request->code);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage())->withInput();
+        }
+
+        return redirect()
+            ->route('wallet.add.balance')
+            ->with('success', '$' . number_format($result['amount'], 2) . ' added to your wallet successfully! Your balance has been updated.');
     }
 }
-
