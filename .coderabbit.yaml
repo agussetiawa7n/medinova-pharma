@@ -4,225 +4,193 @@ reviews:
   high_level_summary: true
   poem: false
   sequence_diagrams: true
-  collapse_details: false
-
-auto_review:
-  enabled: true
-  drafts: true
-  ignore_title_keywords:
-    - "WIP"
-    - "DO NOT MERGE"
-    - "[skip review]"
-
-tools:
-  phpstan:
+  collapse_walkthrough: false
+  auto_review:
     enabled: true
-  phpcs:
-    enabled: true
-  gitleaks:
-    enabled: true
-  semgrep:
-    enabled: true
-
-knowledge_base:
-  code_guidelines:
-    enabled: true
-    filePatterns:
-      - "**/*.blade.php"
-      - "**/*.php"
-      - "**/*.js"
-
-path_instructions:
-
-  - path: "app/Http/Controllers/**"
-    instructions: |
-      - Controllers must be thin, delegate all business logic to Service classes.
-      - Constructor injection only, never use facades inside methods.
-      - Return type declarations required on every public method.
-      - Use dedicated FormRequest classes for any endpoint with more than 2 input fields.
-      - Every resource method must call authorize() or Gate::authorize().
-      - HTTP status codes must be correct: 422 for validation, 403 for authz, 404 for missing.
-      - Never commit dd(), dump(), ddd(), ray(), var_dump(), or die().
-
-  - path: "app/Models/**"
-    instructions: |
-      - Every model must declare either $fillable or $guarded explicitly.
-      - Sensitive columns (password, api_token) must NEVER appear in $fillable.
-      - All date/datetime columns must be in $casts with datetime type.
-      - Boolean columns must cast to boolean, not left as raw 0/1 integers.
-      - JSON columns must cast to array, never decode manually.
-      - Flag any relationship accessed inside a loop without eager loading (N+1 problem).
-      - Use Laravel 11+ Attribute::make() syntax, not old getXAttribute methods.
-      - Eloquent Collections must NOT be typed as public Livewire properties.
-      - Models storing PHI or clinical data must use the Auditable trait.
-
-  - path: "app/Services/**"
-    instructions: |
-      - Services must be stateless, no mutable instance properties.
-      - One service handles one domain concern only.
-      - No Auth::id() calls, accept User $user as a parameter instead.
-      - No Request injection into services.
-      - Every public method must have a return type declaration.
-      - Methods writing to multiple tables must use DB::transaction().
-      - Never silently swallow exceptions with empty catch blocks.
-
-  - path: "app/Filament/**"
-    instructions: |
-      - Custom Pages using InteractsWithSchemas must declare public array $data = [].
-      - FileUpload properties must be untyped or mixed, never ?string.
-      - Add dehydrate() hook for every FileUpload-backed property.
-      - All form submissions must use wire:submit, never wire:click.
-      - Navigation properties must match parent class types: string or BackedEnum or null.
-      - Every Resource must implement canViewAny(), canCreate(), canEdit(), canDelete().
-      - Filament admin panel must be restricted to admin or super-admin role.
-      - Tables with more than 10k rows must implement pagination with page size 25 or less.
-      - File upload fields must restrict MIME types to an explicit allowlist.
-
-  - path: "app/Http/Requests/**"
-    instructions: |
-      - authorize() must return a real policy or gate check, never return true unconditionally.
-      - rules() must cover ALL expected input fields.
-      - Sensitive fields must use the confirmed rule or explicit comparison.
-      - Custom error messages must use lang() keys for localization.
-
-  - path: "app/Http/Middleware/**"
-    instructions: |
-      - Each middleware must have a clear single responsibility.
-      - Never assume Auth::user() is non-null, handle unauthenticated cases explicitly.
-      - Rate-limiting must specify a named limiter via RateLimiter::for().
-      - Never terminate the request with die() or exit(), use abort() instead.
-
-  - path: "app/Policies/**"
-    instructions: |
-      - Every Policy method must have a typed $user parameter.
-      - before() hook must only grant super-admin bypass, document with a comment.
-      - Policy methods must check ownership or role, never return true for all users.
-      - Return false explicitly, not null, when access is denied.
-
-  - path: "app/Jobs/**"
-    instructions: |
-      - Every Job must implement ShouldQueue and dispatch to a named queue.
-      - Set $tries, $maxExceptions, and $backoff explicitly.
-      - Jobs processing PHI must implement ShouldBeEncrypted.
-      - The handle() method must be idempotent, safe to re-run on retry.
-      - Heavy jobs must chunk data to avoid memory limit issues.
-
-  - path: "app/Events/**"
-    instructions: |
-      - Event classes must be readonly DTOs, no mutable state after construction.
-      - Event classes must implement ShouldDispatchAfterCommit when triggered inside a DB transaction.
-
-  - path: "app/Listeners/**"
-    instructions: |
-      - Listeners with DB writes or external API calls must implement ShouldQueue.
-      - failed() method required for queued listeners.
-      - Avoid cascading events inside listeners, document the chain explicitly.
-
-  - path: "app/Notifications/**"
-    instructions: |
-      - PHI must never appear in email subject lines or notification previews.
-      - toMail() must use a Mailable template, not raw HTML strings.
-      - Notifications sent to patients must log an entry to the notification_audit table.
-      - via() must return specific channels, never a wildcard array.
-
-  - path: "app/Console/Commands/**"
-    instructions: |
-      - Commands that mutate data must require a --confirm flag in production.
-      - Never hardcode credentials or connection strings, use config() or env().
-      - Commands processing PHI must log start and end timestamps to the audit log.
-      - Schedule registrations must specify withoutOverlapping() for long-running commands.
-
-  - path: "database/migrations/**"
-    instructions: |
-      - Every migration must have a fully working down() method.
-      - constrained() must specify cascadeOnDelete(), restrictOnDelete(), or nullOnDelete() explicitly.
-      - slug, email, phone, and WHERE clause columns must be indexed.
-      - No raw DB::statement() or DB::unprepared(), use Schema builder only.
-      - Adding a NOT NULL column without a default on an existing table will lock the table, always provide a default.
-
-  - path: "database/seeders/**"
-    instructions: |
-      - Never seed real patient names, real emails, or real PHI, use Faker only.
-      - DatabaseSeeder must call seeders in dependency order to avoid FK violations.
-
-  - path: "database/factories/**"
-    instructions: |
-      - Factories must define every $fillable column with a realistic Faker value.
-      - State methods must return $this->state() not manually merge arrays.
-
-  - path: "resources/views/**/*.blade.php"
-    instructions: |
-      - All user-supplied output must use {{ }} escaped syntax, never {!! !!} unless documented.
-      - Every {!! !!} occurrence must have a comment citing the sanitization method.
-      - livewire: tags are deprecated, use Blade components or Alpine.js instead.
-      - PHP values in x-data must use addslashes() or Js::from() to prevent quote-breaking.
-      - x-show elements must use x-cloak with CSS, never style display none.
-      - Every HTML form must include @csrf.
-      - Forms using PATCH or DELETE must include the @method directive.
-      - Form inputs must have corresponding label elements.
-
-  - path: "resources/js/**"
-    instructions: |
-      - Alpine stores must be registered inside alpine:init event before Alpine.start().
-      - e.currentTarget must be captured synchronously before any async call.
-      - CSRF token must be included on every POST, PATCH, PUT, DELETE request.
-      - fetch() calls must handle both network errors and non-2xx responses.
-      - No console.log, console.warn, or debugger statements in committed code.
-      - Event listeners must be removed in the component destroy or cleanup callback.
-      - innerHTML assignments must sanitize input, never assign raw server responses.
-
-  - path: "routes/**"
-    instructions: |
-      - AJAX routes must use the ajax prefix group and .ajax. name convention.
-      - All auth-protected routes must explicitly declare middleware auth.
-      - Routes handling PHI must carry middleware verified and 2fa.
-      - No anonymous closures in route files, use named controller actions.
-      - Rate limiting must be applied to all auth and public API routes.
-
-  - path: "config/**"
-    instructions: |
-      - Every env() call must have a fallback value.
-      - PHI uploads must use a private disk, not a public disk.
-      - Session driver must be database or redis, never array in production.
-      - Cache driver in production must be redis.
-
-  - path: "tests/**"
-    instructions: |
-      - Every new Service method must have a corresponding Feature or Unit test.
-      - Every new Controller endpoint must have a Feature test covering happy path, validation failure, and unauthorized access.
-      - Test classes must use RefreshDatabase or DatabaseTransactions.
-      - HTTP tests must assert response status codes explicitly.
-      - Tests for PHI endpoints must assert unauthenticated requests return 401 or 403.
-      - External API calls must be mocked with Http::fake().
-      - Queue jobs must use Queue::fake() and Notifications must use Notification::fake().
-
-  - path: "app/Http/Resources/**"
-    instructions: |
-      - API Resources must never expose internal auto-increment integer IDs, use UUIDs.
-      - PHI fields must be conditionally included based on authenticated user role.
-      - whenLoaded() must be used for all relationship data.
-      - Timestamps must be formatted as ISO 8601 strings, not raw Carbon objects.
-
-  - path: "**"
-    instructions: |
-      - Prescription data, diagnosis codes, patient identifiers must never appear in log messages.
-      - Log calls on PHI models must redact sensitive fields, log only IDs.
-      - Any endpoint returning patient records must require authentication AND authorization.
-      - Reject any hardcoded password, API key, JWT secret, or private key in source code.
-      - Raw DB queries must use bound parameters, never string interpolation.
-      - whereRaw(), orderByRaw(), groupByRaw() must use the bindings array, never concatenate user input.
-      - $request->all() must never be passed directly to create() or update().
-      - Always use $request->validated() or $request->safe()->only([]).
-      - Every destructive action must write to an audit log with user_id, timestamp, before and after state.
-
-path_filters:
-  - "!storage/**"
-  - "!vendor/**"
-  - "!node_modules/**"
-  - "!public/build/**"
-  - "!public/vendor/**"
-  - "!bootstrap/cache/**"
-  - "!**/*.min.js"
-  - "!**/*.min.css"
-  - "!_ide_helper*.php"
-  - "!coverage/**"
+    drafts: true
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+      - "[skip review]"
+      - "HOTFIX-UNTESTED"
+  tools:
+    phpstan:
+      enabled: true
+    phpcs:
+      enabled: true
+    gitleaks:
+      enabled: true
+    semgrep:
+      enabled: true
+  path_instructions:
+    - path: "app/Http/Controllers/**"
+      instructions: |
+        - Controllers must be thin, delegate all business logic to Service classes.
+        - Constructor injection only, never use facades inside methods.
+        - Return type declarations required on every public method.
+        - Use dedicated FormRequest classes for any endpoint with more than 2 input fields.
+        - Every resource method must call authorize() or Gate::authorize().
+        - HTTP status codes must be correct: 422 for validation, 403 for authz, 404 for missing.
+        - Never commit dd(), dump(), ddd(), ray(), var_dump(), or die().
+        - Never use redirect('/hardcoded/path'), always use redirect()->route('name').
+    - path: "app/Models/**"
+      instructions: |
+        - Every model must declare either $fillable or $guarded explicitly.
+        - Sensitive columns (password, api_token) must NEVER appear in $fillable.
+        - All date/datetime columns must be in $casts with datetime type.
+        - Boolean columns must cast to boolean, not left as raw 0/1 integers.
+        - JSON columns must cast to array, never decode manually.
+        - Flag any relationship accessed inside a loop without eager loading (N+1 problem).
+        - Use Laravel 11+ Attribute::make() syntax, not old getXAttribute methods.
+        - Eloquent Collections must NOT be typed as public Livewire properties.
+        - Models storing PHI or clinical data must use the Auditable trait.
+    - path: "app/Services/**"
+      instructions: |
+        - Services must be stateless, no mutable instance properties.
+        - One service handles one domain concern only.
+        - No Auth::id() calls, accept User $user as a parameter instead.
+        - No Request injection into services.
+        - Every public method must have a return type declaration.
+        - Methods writing to multiple tables must use DB::transaction().
+        - Never silently swallow exceptions with empty catch blocks.
+    - path: "app/Filament/**"
+      instructions: |
+        - Custom Pages using InteractsWithSchemas must declare public array $data = [].
+        - FileUpload properties must be untyped or mixed, never ?string.
+        - Add dehydrate() hook for every FileUpload-backed property.
+        - All form submissions must use wire:submit, never wire:click.
+        - Navigation properties must match parent class types: string or BackedEnum or null.
+        - Every Resource must implement canViewAny(), canCreate(), canEdit(), canDelete().
+        - Filament admin panel must be restricted to admin or super-admin role.
+        - Tables with more than 10k rows must implement pagination with page size 25 or less.
+        - File upload fields must restrict MIME types to an explicit allowlist.
+    - path: "app/Http/Requests/**"
+      instructions: |
+        - authorize() must return a real policy or gate check, never return true unconditionally.
+        - rules() must cover ALL expected input fields.
+        - Sensitive fields must use the confirmed rule or explicit comparison.
+        - Custom error messages must use lang() keys for localization.
+    - path: "app/Http/Middleware/**"
+      instructions: |
+        - Each middleware must have a clear single responsibility.
+        - Never assume Auth::user() is non-null, handle unauthenticated cases explicitly.
+        - Rate-limiting must specify a named limiter via RateLimiter::for().
+        - Never terminate the request with die() or exit(), use abort() instead.
+    - path: "app/Policies/**"
+      instructions: |
+        - Every Policy method must have a typed $user parameter.
+        - before() hook must only grant super-admin bypass, document with a comment.
+        - Policy methods must check ownership or role, never return true for all users.
+        - Return false explicitly, not null, when access is denied.
+    - path: "app/Jobs/**"
+      instructions: |
+        - Every Job must implement ShouldQueue and dispatch to a named queue.
+        - Set $tries, $maxExceptions, and $backoff explicitly.
+        - Jobs processing PHI must implement ShouldBeEncrypted.
+        - The handle() method must be idempotent, safe to re-run on retry.
+        - Heavy jobs must chunk data to avoid memory limit issues.
+    - path: "app/Events/**"
+      instructions: |
+        - Event classes must be readonly DTOs, no mutable state after construction.
+        - Event classes must implement ShouldDispatchAfterCommit when triggered inside a DB transaction.
+    - path: "app/Listeners/**"
+      instructions: |
+        - Listeners with DB writes or external API calls must implement ShouldQueue.
+        - failed() method required for queued listeners.
+        - Avoid cascading events inside listeners, document the chain explicitly.
+    - path: "app/Notifications/**"
+      instructions: |
+        - PHI must never appear in email subject lines or notification previews.
+        - toMail() must use a Mailable template, not raw HTML strings.
+        - Notifications sent to patients must log an entry to the notification_audit table.
+        - via() must return specific channels, never a wildcard array.
+    - path: "app/Console/Commands/**"
+      instructions: |
+        - Commands that mutate data must require a --confirm flag in production.
+        - Never hardcode credentials or connection strings, use config() or env().
+        - Commands processing PHI must log start and end timestamps to the audit log.
+        - Schedule registrations must specify withoutOverlapping() for long-running commands.
+    - path: "database/migrations/**"
+      instructions: |
+        - Every migration must have a fully working down() method.
+        - constrained() must specify cascadeOnDelete(), restrictOnDelete(), or nullOnDelete() explicitly.
+        - slug, email, phone, and WHERE clause columns must be indexed.
+        - No raw DB::statement() or DB::unprepared(), use Schema builder only.
+        - Adding a NOT NULL column without a default on an existing table will lock the table.
+    - path: "database/seeders/**"
+      instructions: |
+        - Never seed real patient names, real emails, or real PHI, use Faker only.
+        - DatabaseSeeder must call seeders in dependency order to avoid FK violations.
+    - path: "database/factories/**"
+      instructions: |
+        - Factories must define every $fillable column with a realistic Faker value.
+        - State methods must return $this->state() not manually merge arrays.
+    - path: "resources/views/**/*.blade.php"
+      instructions: |
+        - All user-supplied output must use {{ }} escaped syntax, never {!! !!} unless documented.
+        - Every {!! !!} occurrence must have a comment citing the sanitization method.
+        - livewire: tags are deprecated, use Blade components or Alpine.js instead.
+        - PHP values in x-data must use addslashes() or Js::from() to prevent quote-breaking.
+        - x-show elements must use x-cloak with CSS, never style display none.
+        - Every HTML form must include @csrf.
+        - Forms using PATCH or DELETE must include the @method directive.
+        - Form inputs must have corresponding label elements.
+    - path: "resources/js/**"
+      instructions: |
+        - Alpine stores must be registered inside alpine:init event before Alpine.start().
+        - e.currentTarget must be captured synchronously before any async call.
+        - CSRF token must be included on every POST, PATCH, PUT, DELETE request.
+        - fetch() calls must handle both network errors and non-2xx responses.
+        - No console.log, console.warn, or debugger statements in committed code.
+        - Event listeners must be removed in the component destroy or cleanup callback.
+        - innerHTML assignments must sanitize input, never assign raw server responses.
+    - path: "routes/**"
+      instructions: |
+        - AJAX routes must use the ajax prefix group and .ajax. name convention.
+        - All auth-protected routes must explicitly declare middleware auth.
+        - Routes handling PHI must carry middleware verified and 2fa.
+        - No anonymous closures in route files, use named controller actions.
+        - Rate limiting must be applied to all auth and public API routes.
+    - path: "config/**"
+      instructions: |
+        - Every env() call must have a fallback value.
+        - PHI uploads must use a private disk, not a public disk.
+        - Session driver must be database or redis, never array in production.
+        - Cache driver in production must be redis.
+    - path: "tests/**"
+      instructions: |
+        - Every new Service method must have a corresponding Feature or Unit test.
+        - Every new Controller endpoint must have a Feature test covering happy path, validation failure, and unauthorized access.
+        - Test classes must use RefreshDatabase or DatabaseTransactions.
+        - HTTP tests must assert response status codes explicitly.
+        - Tests for PHI endpoints must assert unauthenticated requests return 401 or 403.
+        - External API calls must be mocked with Http::fake().
+        - Queue jobs must use Queue::fake() and Notifications must use Notification::fake().
+    - path: "app/Http/Resources/**"
+      instructions: |
+        - API Resources must never expose internal auto-increment integer IDs, use UUIDs.
+        - PHI fields must be conditionally included based on authenticated user role.
+        - whenLoaded() must be used for all relationship data.
+        - Timestamps must be formatted as ISO 8601 strings, not raw Carbon objects.
+    - path: "**"
+      instructions: |
+        - Prescription data, diagnosis codes, patient identifiers must never appear in log messages.
+        - Log calls on PHI models must redact sensitive fields, log only IDs.
+        - Any endpoint returning patient records must require authentication AND authorization.
+        - Reject any hardcoded password, API key, JWT secret, or private key in source code.
+        - Raw DB queries must use bound parameters, never string interpolation.
+        - whereRaw(), orderByRaw(), groupByRaw() must use the bindings array, never concatenate user input.
+        - $request->all() must never be passed directly to create() or update().
+        - Always use $request->validated() or $request->safe()->only([]).
+        - Every destructive action must write to an audit log with user_id, timestamp, before and after state.
+  path_filters:
+    - "!storage/**"
+    - "!vendor/**"
+    - "!node_modules/**"
+    - "!public/build/**"
+    - "!public/vendor/**"
+    - "!bootstrap/cache/**"
+    - "!**/*.min.js"
+    - "!**/*.min.css"
+    - "!_ide_helper*.php"
+    - "!coverage/**"
