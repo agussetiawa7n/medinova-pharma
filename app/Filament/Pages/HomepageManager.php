@@ -284,8 +284,22 @@ class HomepageManager extends Page
         Setting::set('home.category_ids', json_encode(array_values($this->home_category_ids)), 'homepage');
         Setting::set('home.category_count', $this->home_category_count, 'homepage');
 
-        // Promo Banners
-        Setting::set('home.promo_banners', json_encode(array_values($this->promoBanners)), 'homepage');
+        // Promo Banners — process uploaded files before encoding
+        $promoBanners = array_map(function ($banner) {
+            if (!empty($banner['image']) && $banner['image'] instanceof \Livewire\Features\SupportFileUploads\TemporaryUploadedFile) {
+                $banner['image'] = $banner['image']->store('promo-banners', 'public');
+            }
+            return $banner;
+        }, $this->promoBanners);
+        Setting::set('home.promo_banners', json_encode(array_values($promoBanners)), 'homepage');
+
+        foreach (['promoLeftBanner', 'promoRightBanner'] as $bannerKey) {
+            $banner = $this->{$bannerKey};
+            if (!empty($banner['image']) && $banner['image'] instanceof \Livewire\Features\SupportFileUploads\TemporaryUploadedFile) {
+                $banner['image'] = $banner['image']->store('promo-grid', 'public');
+                $this->{$bannerKey} = $banner;
+            }
+        }
         Setting::set('home.promo_left_banner', json_encode($this->promoLeftBanner), 'homepage');
         Setting::set('home.promo_right_banner', json_encode($this->promoRightBanner), 'homepage');
 

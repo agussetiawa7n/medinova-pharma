@@ -4,6 +4,7 @@ namespace App\Services\Payment;
 
 use App\Contracts\PaymentGatewayInterface;
 use App\Services\Payment\Concerns\HasGatewayToggle;
+use Illuminate\Support\Facades\Log;
 use Razorpay\Api\Api;
 
 class RazorpayGateway implements PaymentGatewayInterface
@@ -22,7 +23,7 @@ class RazorpayGateway implements PaymentGatewayInterface
     public function createPayment(float $amount, string $currency, array $metadata = []): array
     {
         $order = $this->api->order->create([
-            'amount'   => (int) ($amount * 100), // paise
+            'amount'   => (int) ($amount * 100),
             'currency' => $currency,
             'receipt'  => 'MNP-' . ($metadata['order_id'] ?? uniqid()),
             'notes'    => $metadata,
@@ -48,7 +49,11 @@ class RazorpayGateway implements PaymentGatewayInterface
             $this->api->utility->verifyPaymentSignature($attributes);
 
             return true;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
+            Log::error('Razorpay verification failed', [
+                'gateway' => 'razorpay',
+                'error'   => $e->getMessage(),
+            ]);
             return false;
         }
     }
@@ -60,7 +65,12 @@ class RazorpayGateway implements PaymentGatewayInterface
             $this->api->payment->fetch($gatewayPaymentId)->refund($params);
 
             return true;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
+            Log::error('Razorpay refund failed', [
+                'gateway' => 'razorpay',
+                'payment_id' => $gatewayPaymentId,
+                'error' => $e->getMessage(),
+            ]);
             return false;
         }
     }

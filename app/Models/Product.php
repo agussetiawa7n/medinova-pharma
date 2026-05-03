@@ -120,31 +120,37 @@ class Product extends Model
     }
 
     // Helpers
-    public function getDiscountPercentAttribute(): int
+    protected function discountPercent(): \Illuminate\Database\Eloquent\Casts\Attribute
     {
-        if (!$this->compare_price || $this->compare_price <= $this->price) {
-            return 0;
-        }
-
-        return (int) round((($this->compare_price - $this->price) / $this->compare_price) * 100);
+        return \Illuminate\Database\Eloquent\Casts\Attribute::get(function () {
+            if (!$this->compare_price || $this->compare_price <= $this->price) {
+                return 0;
+            }
+            return (int) round((($this->compare_price - $this->price) / $this->compare_price) * 100);
+        });
     }
 
-    public function getIsInStockAttribute(): bool
+    protected function isInStock(): \Illuminate\Database\Eloquent\Casts\Attribute
     {
-        if (!$this->track_inventory) {
-            return true;
-        }
-
-        return $this->stock_quantity > 0 || $this->allow_backorder;
+        return \Illuminate\Database\Eloquent\Casts\Attribute::get(function () {
+            if (!$this->track_inventory) return true;
+            return $this->stock_quantity > 0 || $this->allow_backorder;
+        });
     }
 
-    public function getStockAttribute(): int
+    protected function stock(): \Illuminate\Database\Eloquent\Casts\Attribute
     {
-        return (int) $this->stock_quantity;
+        return \Illuminate\Database\Eloquent\Casts\Attribute::get(fn () => (int) $this->stock_quantity);
     }
 
-    public function getAverageRatingAttribute(): float
+    protected function averageRating(): \Illuminate\Database\Eloquent\Casts\Attribute
     {
-        return round($this->reviews()->avg('rating') ?? 0, 1);
+        return \Illuminate\Database\Eloquent\Casts\Attribute::get(function () {
+            // Use pre-loaded aggregate if available — prevents N+1 per product
+            if (array_key_exists('reviews_avg_rating', $this->attributes)) {
+                return round((float) ($this->attributes['reviews_avg_rating'] ?? 0), 1);
+            }
+            return round($this->reviews()->avg('rating') ?? 0, 1);
+        });
     }
 }

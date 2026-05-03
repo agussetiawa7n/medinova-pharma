@@ -12,10 +12,10 @@ class ProductController extends Controller
 {
     public function index(Request $request)
     {
-        $categories = Category::query()->where('is_active', true)->whereNull('parent_id')->with('children')->orderBy('sort_order')->get();
-        $brands     = Brand::query()->where('is_active', true)->orderBy('name')->get();
+        $categories = Category::query()->where('is_active', true)->whereNull('parent_id')
+            ->with('children')->orderBy('sort_order')->get();
+        $brands = Brand::query()->where('is_active', true)->orderBy('name')->get();
 
-        // Keep the initial search query / filters so the page can prime the grid
         $initialFilters = $request->only(['q', 'search', 'category', 'brand', 'minPrice', 'maxPrice', 'sort', 'in_stock', 'on_sale']);
 
         return view('products.index', compact('categories', 'brands', 'initialFilters'));
@@ -31,7 +31,7 @@ class ProductController extends Controller
             ->withAvg('reviews', 'rating')
             ->firstOrFail();
 
-        $product->loadMissing('reviews.user');
+        $product->loadMissing(['reviews' => fn ($q) => $q->latest()->limit(20), 'reviews.user']);
 
         $related = Product::query()
             ->where('is_active', true)
@@ -70,14 +70,14 @@ class ProductController extends Controller
             $query->where(function (Builder $q) use ($term) {
                 $q->where('name', 'like', "%{$term}%")
                   ->orWhere('short_description', 'like', "%{$term}%")
-                  ->orWhere('sku', 'like', "%{$term}%");
+                  ->orWhere('sku', 'like', "{$term}%"); // Prefix-only: uses index
             });
         }
 
         if (!empty($validated['category'])) {
-            $category = Category::where('slug', $validated['category'])->first();
+            $category = Category::where('slug', $validated['category'])->with('children:id,parent_id')->first();
             if ($category) {
-                $childIds = $category->children()->pluck('id')->push($category->id);
+                $childIds = $category->children->pluck('id')->push($category->id);
                 $query->whereIn('category_id', $childIds);
             }
         }

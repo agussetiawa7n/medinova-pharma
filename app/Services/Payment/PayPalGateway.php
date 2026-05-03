@@ -4,6 +4,7 @@ namespace App\Services\Payment;
 
 use App\Contracts\PaymentGatewayInterface;
 use App\Services\Payment\Concerns\HasGatewayToggle;
+use Illuminate\Support\Facades\Log;
 use Srmklive\PayPal\Services\PayPal as PayPalClient;
 
 class PayPalGateway implements PaymentGatewayInterface
@@ -54,7 +55,11 @@ class PayPalGateway implements PaymentGatewayInterface
             $result  = $this->client()->capturePaymentOrder($orderId);
 
             return ($result['status'] ?? '') === 'COMPLETED';
-        } catch (\Exception) {
+        } catch (\Exception $e) {
+            Log::error('PayPal payment verification failed', [
+                'gateway' => 'paypal',
+                'error'   => $e->getMessage(),
+            ]);
             return false;
         }
     }
@@ -70,7 +75,12 @@ class PayPalGateway implements PaymentGatewayInterface
             );
 
             return true;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
+            Log::error('PayPal refund failed', [
+                'gateway' => 'paypal',
+                'payment_id' => $gatewayPaymentId,
+                'error' => $e->getMessage(),
+            ]);
             return false;
         }
     }

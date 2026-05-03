@@ -46,7 +46,7 @@
     {{-- Image --}}
     <a href="{{ route('products.show', $product->slug) }}" class="mn-product-media d-block">
         @if($product->thumbnail)
-            <img src="{{ $product->thumbnail_url }}" alt="{{ $product->name }}" loading="lazy">
+            <img src="{{ $product->thumbnail_url }}" alt="{{ $product->name }}" loading="lazy" width="300" height="300" style="aspect-ratio:1/1;object-fit:cover;">
         @else
             <div class="w-100 h-100 d-flex align-items-center justify-content-center" style="color:#D1D5DB; font-size:48px;">
                 <i class="fa-solid fa-pills"></i>

@@ -35,8 +35,8 @@ class BannerResource extends Resource
                 Forms\Components\Select::make('position')
                     ->options(['hero' => 'Hero', 'promo' => 'Promo', 'sidebar' => 'Sidebar'])
                     ->required()->default('hero'),
-                Forms\Components\FileUpload::make('image')->image()->required()->disk('public')->directory('banners')->columnSpanFull(),
-                Forms\Components\FileUpload::make('mobile_image')->image()->disk('public')->directory('banners')->label('Mobile Image'),
+                Forms\Components\FileUpload::make('image')->image()->required()->disk('public')->directory('banners')->columnSpanFull()->acceptedFileTypes(['image/jpeg','image/png','image/webp','image/gif']),
+                Forms\Components\FileUpload::make('mobile_image')->image()->disk('public')->directory('banners')->label('Mobile Image')->acceptedFileTypes(['image/jpeg','image/png','image/webp','image/gif']),
                 Forms\Components\TextInput::make('link')->url()->label('Link URL'),
                 Forms\Components\TextInput::make('button_text'),
                 Forms\Components\Textarea::make('subtitle'),

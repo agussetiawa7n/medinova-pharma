@@ -75,7 +75,7 @@
                         @endif
                         @if($order->tax_amount > 0)
                             <li>
-                                <span class="cs_light">Tax (18% GST)</span>
+                                <span class="cs_light">{{ \App\Models\Setting::get('pricing.tax_label', 'Tax (18% GST)') }}</span>
                                 <span class="cs_semibold cs_primary_color">${{ number_format($order->tax_amount, 2) }}</span>
                             </li>
                         @endif

@@ -309,7 +309,7 @@
             <div class="tab-pane fade show active" id="pane-desc" role="tabpanel">
                 <div style="max-width:900px; line-height:1.8; color:#636363;">
                     @if($product->description)
-                        {!! $product->description !!}
+                        {{ $product->description }}
                     @else
                         <p class="text-muted">No detailed description available.</p>
                     @endif

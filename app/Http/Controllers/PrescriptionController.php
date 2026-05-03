@@ -54,9 +54,11 @@ class PrescriptionController extends Controller
             abort(404);
         }
 
-        return response()->file(
-            storage_path('app/private/' . $prescription->file_path),
-            ['Content-Type' => $prescription->mime_type]
-        );
+        $allowedMimes = ['image/jpeg', 'image/png', 'application/pdf'];
+        $mime = in_array($prescription->mime_type, $allowedMimes, true)
+            ? $prescription->mime_type
+            : $disk->mimeType($prescription->file_path);
+
+        return $disk->response($prescription->file_path, headers: ['Content-Type' => $mime]);
     }
 }

@@ -141,6 +141,7 @@ class CheckoutController extends Controller
     public function success(Order $order)
     {
         Gate::authorize('owns-order', $order);
+        $order->load('items');
         return view('checkout.success', compact('order'));
     }
 

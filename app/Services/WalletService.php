@@ -63,7 +63,7 @@ class WalletService
 
     public function getSharedSecret(): string
     {
-        return Setting::get('wallet.shared_secret', config('app.wallet_shared_secret', ''));
+        return config('services.wallet_shared_secret', env('WALLET_SHARED_SECRET', ''));
     }
 
     public function redeemCode(int $userId, string $code): array

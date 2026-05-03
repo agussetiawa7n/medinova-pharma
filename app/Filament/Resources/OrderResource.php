@@ -46,6 +46,39 @@ class OrderResource extends Resource
                 ]),
                 Forms\Components\Textarea::make('notes')->rows(3)->columnSpanFull(),
             ]),
+            Section::make('Order Items')
+                ->schema(function ($record) {
+                    if (!$record?->items?->count()) {
+                        return [Forms\Components\Placeholder::make('empty')->content('No items found.')];
+                    }
+                    $fields = [];
+                    foreach ($record->items as $i => $item) {
+                        $fields[] = \Filament\Schemas\Components\Fieldset::make($item->product_name)
+                            ->schema([
+                                Forms\Components\Placeholder::make("_ri{$item->id}_sku")
+                                    ->label('SKU')->content($item->product_sku),
+                                Forms\Components\Placeholder::make("_ri{$item->id}_qty")
+                                    ->label('Quantity')->content((string) $item->quantity),
+                                Forms\Components\Placeholder::make("_ri{$item->id}_price")
+                                    ->label('Price')->content('$'.number_format($item->unit_price, 2)),
+                                Forms\Components\Placeholder::make("_ri{$item->id}_total")
+                                    ->label('Line Total')->content('$'.number_format($item->total, 2)),
+                            ]);
+                    }
+                    // Shipping + Tax summary
+                    $fields[] = \Filament\Schemas\Components\Fieldset::make('Order Totals')
+                        ->schema([
+                            Forms\Components\Placeholder::make('order_subtotal')
+                                ->label('Subtotal')->content('$'.number_format($record->subtotal, 2)),
+                            Forms\Components\Placeholder::make('order_shipping')
+                                ->label('Shipping Fee')->content('$'.number_format($record->shipping_amount, 2)),
+                            Forms\Components\Placeholder::make('order_tax')
+                                ->label(\App\Models\Setting::get('pricing.tax_label', 'Tax (18% GST)'))
+                                ->content('$'.number_format($record->tax_amount, 2)),
+                        ]);
+                    return $fields;
+                })
+                ->collapsed(false),
             Section::make('Shipping Address')->schema([
                 Grid::make(2)->schema([
                     Forms\Components\TextInput::make('shipping_name'),
@@ -74,6 +107,7 @@ class OrderResource extends Resource
                 Tables\Columns\TextColumn::make('payment_status')
                     ->badge()
                     ->color(fn (PaymentStatus $state) => $state->color()),
+                Tables\Columns\TextColumn::make('items_count')->label('Items')->counts('items'),
                 Tables\Columns\TextColumn::make('total')->money('INR')->sortable(),
                 Tables\Columns\TextColumn::make('payment_method')
                     ->formatStateUsing(fn ($state) => $state?->label()),

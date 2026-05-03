@@ -4,6 +4,7 @@ namespace App\Services\Payment;
 
 use App\Contracts\PaymentGatewayInterface;
 use App\Services\Payment\Concerns\HasGatewayToggle;
+use Illuminate\Support\Facades\Log;
 use Stripe\PaymentIntent;
 use Stripe\Refund;
 use Stripe\Stripe;
@@ -43,7 +44,11 @@ class StripeGateway implements PaymentGatewayInterface
             );
 
             return true;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
+            Log::error('Stripe webhook verification failed', [
+                'gateway' => 'stripe',
+                'error'   => $e->getMessage(),
+            ]);
             return false;
         }
     }
@@ -58,7 +63,12 @@ class StripeGateway implements PaymentGatewayInterface
             Refund::create($params);
 
             return true;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
+            Log::error('Stripe refund failed', [
+                'gateway' => 'stripe',
+                'payment_id' => $gatewayPaymentId,
+                'error' => $e->getMessage(),
+            ]);
             return false;
         }
     }

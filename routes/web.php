@@ -30,10 +30,10 @@ Route::get('/page/{slug}', [PageController::class, 'show'])->name('page');
 
 // Auth
 Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login')->middleware('guest');
-Route::post('/login', [LoginController::class, 'login'])->middleware('guest');
+Route::post('/login', [LoginController::class, 'login'])->middleware(['guest', 'throttle:5,1']);
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 Route::get('/register', [RegisterController::class, 'showRegistrationForm'])->name('register')->middleware('guest');
-Route::post('/register', [RegisterController::class, 'register'])->middleware('guest');
+Route::post('/register', [RegisterController::class, 'register'])->middleware(['guest', 'throttle:3,60']);
 
 // --- Cart (guest-accessible) ---
 Route::get('/cart', [CartController::class, 'index'])->name('cart');
@@ -56,6 +56,8 @@ Route::prefix('ajax')->name('ajax.')->group(function () {
 // --- Authenticated ---
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/profile/edit', [DashboardController::class, 'edit'])->name('profile.edit');
+    Route::put('/profile', [DashboardController::class, 'update'])->name('profile.update');
 
     // Checkout
     Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout');

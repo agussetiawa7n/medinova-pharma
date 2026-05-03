@@ -11,13 +11,18 @@
 
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
 
-    {{-- Preconnect for external domains --}}
+    {{-- DNS prefetch for asset origins — shaves 50-150ms off first request --}}
+    <link rel="dns-prefetch" href="//fonts.googleapis.com">
+    <link rel="dns-prefetch" href="//fonts.gstatic.com">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
-    {{-- Google Fonts (Barlow + Prompt) — direct link, not @import --}}
+    {{-- Fonts with display=swap to prevent FOIT (Flash of Invisible Text) --}}
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" media="print" onload="this.media='all';this.onload=null">
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap"></noscript>
+
+    {{-- Inline font-display override to prevent layout shift from font swap --}}
+    <style>@font-face{font-display:swap;}</style>
 
     {{-- Critical: Bootstrap grid + utilities needed for layout --}}
     <link rel="stylesheet" href="{{ asset('assets/glowify/css/bootstrap.min.css') }}">
@@ -30,7 +35,7 @@
         <link rel="stylesheet" href="{{ asset('assets/glowify/css/fontawesome.min.css') }}">
     </noscript>
 
-    {{-- Pharma overrides + Vite (Swiper + Bootstrap JS + Alpine + Livewire) --}}
+    {{-- Vite: Swiper + Alpine.js + Bootstrap JS --}}
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
     @stack('head')

@@ -16,6 +16,10 @@
     $heroUrl   = \App\Models\Setting::get('home.hero_button_url') ?: route('products.index');
 @endphp
 
+@push('head')
+<link rel="preload" as="image" href="{{ $heroBg }}" fetchpriority="high">
+@endpush
+
 <div class="cs_hero cs_style_2 cs_bg_filed" data-src="{{ $heroBg }}">
     <div class="container">
         <div class="cs_hero_text">

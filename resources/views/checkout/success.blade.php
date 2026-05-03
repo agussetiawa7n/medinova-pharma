@@ -38,6 +38,12 @@
                     <span class="cs_light">Status</span>
                     <span class="cs_semibold cs_accent_color">{{ $order->status->label() }}</span>
                 </li>
+                @foreach($order->items as $item)
+                <li>
+                    <span class="cs_light">{{ $item->product_name }} <small style="color:#9CA3AF;">×{{ $item->quantity }}</small></span>
+                    <span class="cs_semibold cs_primary_color">${{ number_format($item->total, 2) }}</span>
+                </li>
+                @endforeach
                 <li class="cs_total_price">
                     <span class="cs_medium cs_fs_24 cs_primary_color">Total</span>
                     <span class="cs_medium cs_fs_24 cs_primary_color">${{ number_format($order->total, 2) }}</span>

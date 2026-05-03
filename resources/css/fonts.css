@@ -1,0 +1,69 @@
+/* Self-hosted Barlow + Prompt — no external Google Fonts DNS lookup */
+/* Downloaded from Google Fonts, served locally for zero-latency loading */
+
+/* Barlow — wght 400;500;600;700 */
+@font-face {
+    font-family: 'Barlow';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/fonts/barlow-400.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Barlow';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/fonts/barlow-500.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Barlow';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/fonts/barlow-600.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Barlow';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/fonts/barlow-700.woff2') format('woff2');
+}
+
+/* Prompt — wght 300;400;500;600;700 */
+@font-face {
+    font-family: 'Prompt';
+    font-style: normal;
+    font-weight: 300;
+    font-display: swap;
+    src: url('/fonts/prompt-300.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Prompt';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/fonts/prompt-400.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Prompt';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/fonts/prompt-500.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Prompt';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/fonts/prompt-600.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Prompt';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/fonts/prompt-700.woff2') format('woff2');
+}

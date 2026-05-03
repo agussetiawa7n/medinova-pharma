@@ -226,6 +226,7 @@ Alpine.data('cartOffcanvas', () => ({
     loading: true,
     removing: {},
     _loadId: 0,
+    _lastLoadAt: 0,
     _initDone: false,
 
     init() {
@@ -241,6 +242,8 @@ Alpine.data('cartOffcanvas', () => ({
     },
 
     async load() {
+        // Debounce: skip if data was loaded less than 3 seconds ago
+        if (Date.now() - this._lastLoadAt < 3000 && this.items.length >= 0 && this._loadId > 0) return;
         const id = ++this._loadId;
         try {
             const data = await window.apiFetch('/ajax/cart/data');
@@ -249,8 +252,9 @@ Alpine.data('cartOffcanvas', () => ({
                 this.count = data.count || 0;
                 this.subtotal = data.subtotal || 0;
                 Alpine.store('cartPending').items = [];
-                // Keep header badge in sync with actual cart count
+                // Keep header badge in sync
                 Alpine.store('cart').count = data.count || 0;
+                this._lastLoadAt = Date.now();
             }
         } catch (e) {
             // silent
@@ -367,4 +371,19 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(initGlowifyHeader));
 } else {
     requestAnimationFrame(initGlowifyHeader);
+}
+
+// Register Service Worker for offline-capable instant reloads
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+}
+
+// Speculation Rules — prerender next page on hover for SPA-like feel
+if (HTMLScriptElement.supports?.('speculationrules')) {
+    const specScript = document.createElement('script');
+    specScript.type = 'speculationrules';
+    specScript.textContent = JSON.stringify({
+        prerender: [{ source: 'document', where: { href_matches: '/*' }, eagerness: 'moderate' }]
+    });
+    document.head.appendChild(specScript);
 }

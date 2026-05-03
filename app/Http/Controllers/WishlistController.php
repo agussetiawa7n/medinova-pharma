@@ -14,7 +14,8 @@ class WishlistController extends Controller
         /** @var \App\Models\User $user */
         $user  = Auth::user();
         $items = $user->wishlist()
-            ->with('product.brand')
+            ->with(['product' => fn ($q) => $q->select('id','name','slug','price','compare_price','thumbnail','is_active','track_inventory','stock_quantity','allow_backorder','requires_prescription','brand_id'),
+                     'product.brand:id,name,slug'])
             ->latest()
             ->get();
 

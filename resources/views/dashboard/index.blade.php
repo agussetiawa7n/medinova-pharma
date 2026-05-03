@@ -24,7 +24,7 @@
             <div class="cs_account_card cs_radius_10">
                 <div class="cs_account_card_head">
                     <h3 class="cs_fs_18 mb-0">Personal Profile</h3>
-                    <a class="cs_text_btn cs_accent_color cs_medium" href="{{ route('dashboard') }}">
+                    <a class="cs_text_btn cs_accent_color cs_medium" href="{{ route('profile.edit') }}">
                         <span>Edit</span>
                     </a>
                 </div>

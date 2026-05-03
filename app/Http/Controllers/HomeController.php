@@ -23,8 +23,8 @@ class HomeController extends Controller
             ->withCount('products')
             ->get();
 
-        $allBrands    = Brand::where('is_active', true)->get()->keyBy('id');
-        $allCats      = Category::where('is_active', true)->get()->keyBy('id');
+        $allBrands = Brand::where('is_active', true)->get()->keyBy('id');
+        $allCats   = Category::where('is_active', true)->get()->keyBy('id');
 
         $setRelations = function ($products) use ($allBrands, $allCats) {
             foreach ($products as $p) {
@@ -38,19 +38,17 @@ class HomeController extends Controller
             ->withCount('reviews')
             ->withAvg('reviews', 'rating');
 
-        // Dynamic section toggles (default: true)
-        $show = fn (string $key) => (bool) Setting::get("home.{$key}", true);
-        $sections = [
-            'show_feature_strip'    => $show('show_feature_strip'),
-            'show_categories'       => $show('show_categories'),
-            'show_flash_sale'       => $show('show_flash_sale'),
-            'show_promo_banners'    => $show('show_promo_banners'),
-            'show_featured'         => $show('show_featured'),
-            'show_prescription_cta' => $show('show_prescription_cta'),
-            'show_new_arrivals'     => $show('show_new_arrivals'),
-            'show_best_sellers'     => $show('show_best_sellers'),
-            'show_faq'              => $show('show_faq'),
+        // Batch-read all section toggles (1 query) instead of 9 separate Setting::get() calls
+        $sectionKeys = [
+            'show_feature_strip', 'show_categories', 'show_flash_sale',
+            'show_promo_banners', 'show_featured', 'show_prescription_cta',
+            'show_new_arrivals', 'show_best_sellers', 'show_faq',
         ];
+        $sectionValues = Setting::getCached();
+        $sections = [];
+        foreach ($sectionKeys as $key) {
+            $sections[$key] = (bool) ($sectionValues["home.{$key}"] ?? true);
+        }
 
         $flashSale = $baseQuery()
             ->whereColumn('compare_price', '>', 'price')
@@ -70,10 +68,11 @@ class HomeController extends Controller
         $newArrivals = $baseQuery()->orderByDesc('created_at')->limit(10)->get();
         $setRelations($newArrivals);
 
-        return view('home', array_merge(compact(
+        return view('home', compact(
             'categories',
-            'flashSale', 'featuredProducts', 'bestSellers', 'newArrivals'
-        ), ['sections' => $sections]));
+            'flashSale', 'featuredProducts', 'bestSellers', 'newArrivals',
+            'sections'
+        ));
     }
 
     public function newsletterSubscribe(Request $request)

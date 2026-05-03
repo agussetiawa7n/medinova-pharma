@@ -156,10 +156,9 @@
                 </div>
                 <div>
                     <label class="ps-label">Key Secret</label>
-                    <div class="ps-input-wrap">
-                        <input type="password" wire:model="razorpay_secret" placeholder="••••••••••••" class="ps-input" style="--focus-ring:#ea580c;--focus-glow:rgba(234,88,12,.12)">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
-                    </div>
+                    <p style="padding:.6rem .75rem;background:#fefce8;border:1px solid #fde68a;border-radius:.5rem;color:#92400e;font-size:.8rem;">
+                        <strong>RAZORPAY_SECRET</strong> — Configure in <code>.env</code> only (not stored in database).
+                    </p>
                 </div>
             </div>
             <p style="margin-top:.75rem;font-size:.7rem;color:#94a3b8;display:flex;align-items:center;gap:.35rem">
@@ -209,17 +208,15 @@
                 </div>
                 <div>
                     <label class="ps-label">Secret Key</label>
-                    <div class="ps-input-wrap">
-                        <input type="password" wire:model="stripe_secret" placeholder="sk_live_xxxx" class="ps-input" style="--focus-ring:#7c3aed;--focus-glow:rgba(124,58,237,.12)">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
-                    </div>
+                    <p style="padding:.6rem .75rem;background:#fefce8;border:1px solid #fde68a;border-radius:.5rem;color:#92400e;font-size:.8rem;">
+                        <strong>STRIPE_SECRET</strong> — Configure in <code>.env</code> only (not stored in database).
+                    </p>
                 </div>
                 <div style="grid-column:1/-1">
                     <label class="ps-label">Webhook Secret</label>
-                    <div class="ps-input-wrap">
-                        <input type="password" wire:model="stripe_webhook_secret" placeholder="whsec_xxxx" class="ps-input" style="--focus-ring:#7c3aed;--focus-glow:rgba(124,58,237,.12)">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
-                    </div>
+                    <p style="padding:.6rem .75rem;background:#fefce8;border:1px solid #fde68a;border-radius:.5rem;color:#92400e;font-size:.8rem;">
+                        <strong>STRIPE_WEBHOOK_SECRET</strong> — Configure in <code>.env</code> only (not stored in database).
+                    </p>
                 </div>
             </div>
             <p style="margin-top:.75rem;font-size:.7rem;color:#94a3b8;display:flex;align-items:center;gap:.35rem">
@@ -273,10 +270,9 @@
                 </div>
                 <div style="grid-column:1/-1">
                     <label class="ps-label">Client Secret</label>
-                    <div class="ps-input-wrap">
-                        <input type="password" wire:model="paypal_client_secret" placeholder="••••••••••••" class="ps-input" style="--focus-ring:#0284c7;--focus-glow:rgba(2,132,199,.12)">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
-                    </div>
+                    <p style="padding:.6rem .75rem;background:#fefce8;border:1px solid #fde68a;border-radius:.5rem;color:#92400e;font-size:.8rem;">
+                        <strong>PAYPAL_CLIENT_SECRET</strong> — Configure in <code>.env</code> only (not stored in database).
+                    </p>
                 </div>
             </div>
             <p style="margin-top:.75rem;font-size:.7rem;color:#94a3b8;display:flex;align-items:center;gap:.35rem">
@@ -391,10 +387,10 @@
                 </div>
                 <div>
                     <label class="ps-label">Shared Secret (HMAC Key)</label>
-                    <div class="ps-input-wrap">
-                        <input type="password" wire:model="wallet_shared_secret" placeholder="••••••••••••" class="ps-input" style="--focus-ring:#db2777;--focus-glow:rgba(219,39,119,.12)">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
-                    </div>
+                    <p style="padding:.6rem .75rem;background:#fefce8;border:1px solid #fde68a;border-radius:.5rem;color:#92400e;font-size:.8rem;">
+                        <strong>WALLET_SHARED_SECRET</strong> — Configure in <code>.env</code> only (not stored in database).
+                        Required for wallet top-up code generation and verification.
+                    </p>
                 </div>
                 <div>
                     <label class="ps-label">Tutorial Video URL</label>

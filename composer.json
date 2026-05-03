@@ -16,6 +16,7 @@
         "maatwebsite/excel": "^3.1",
         "predis/predis": "*",
         "razorpay/razorpay": "^2.0",
+        "spatie/laravel-activitylog": "^5.0",
         "spatie/laravel-medialibrary": "^11.0",
         "spatie/laravel-permission": "^6.0",
         "spatie/laravel-sitemap": "^7.0",

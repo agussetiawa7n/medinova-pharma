@@ -76,9 +76,11 @@ class ProductResource extends Resource
                 ]),
                 Tab::make('Media')->schema([
                     Forms\Components\FileUpload::make('thumbnail')
-                        ->image()->disk('public')->directory('products/thumbnails')->columnSpanFull(),
+                        ->image()->disk('public')->directory('products/thumbnails')->columnSpanFull()
+                        ->acceptedFileTypes(['image/jpeg','image/png','image/webp','image/gif']),
                     Forms\Components\FileUpload::make('images')
-                        ->image()->multiple()->disk('public')->directory('products/gallery')->columnSpanFull(),
+                        ->image()->multiple()->disk('public')->directory('products/gallery')->columnSpanFull()
+                        ->acceptedFileTypes(['image/jpeg','image/png','image/webp','image/gif']),
                 ]),
                 Tab::make('Status & Visibility')->schema([
                     Grid::make(2)->schema([
