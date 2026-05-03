@@ -43,14 +43,14 @@ Route::delete('/cart/coupon', [CartController::class, 'removeCoupon'])->name('ca
 // --- AJAX endpoints ---
 Route::prefix('ajax')->name('ajax.')->group(function () {
     Route::get('/products', [ProductController::class, 'ajaxIndex'])->name('products');
-    Route::get('/cart/count', [CartController::class, 'count'])->name('ajax.cart.count');
-    Route::get('/cart/data', [CartController::class, 'data'])->name('ajax.cart.data');
-    Route::post('/cart/add', [CartController::class, 'add'])->name('ajax.cart.add');
-    Route::patch('/cart/item/{id}', [CartController::class, 'update'])->name('ajax.cart.update');
-    Route::delete('/cart/item/{id}', [CartController::class, 'remove'])->name('ajax.cart.remove');
-    Route::get('/wishlist/count', [WishlistController::class, 'count'])->name('ajax.wishlist.count');
-    Route::post('/wishlist/toggle', [WishlistController::class, 'toggle'])->middleware('auth')->name('ajax.wishlist.toggle');
-    Route::post('/newsletter/subscribe', [HomeController::class, 'newsletterSubscribe'])->name('ajax.newsletter.subscribe');
+    Route::get('/cart/count', [CartController::class, 'count'])->name('cart.count');
+    Route::get('/cart/data', [CartController::class, 'data'])->name('cart.data');
+    Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
+    Route::patch('/cart/item/{id}', [CartController::class, 'update'])->name('cart.update');
+    Route::delete('/cart/item/{id}', [CartController::class, 'remove'])->name('cart.remove');
+    Route::get('/wishlist/count', [WishlistController::class, 'count'])->name('wishlist.count');
+    Route::post('/wishlist/toggle', [WishlistController::class, 'toggle'])->middleware('auth')->name('wishlist.toggle');
+    Route::post('/newsletter/subscribe', [HomeController::class, 'newsletterSubscribe'])->name('newsletter.subscribe');
 });
 
 // --- Authenticated ---
