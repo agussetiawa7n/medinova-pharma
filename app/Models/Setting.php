@@ -13,15 +13,15 @@ class Setting extends Model
      * Bulk-cache ALL settings and return by key. Cuts N individual
      * Setting::get() calls into a single DB query + in-memory array lookups.
      */
+    private static ?array $localCache = null;
+
     public static function getCached(?string $key = null, mixed $default = null): mixed
     {
-        static $localCache = null;
-
-        $all = $localCache ?? Cache::remember('site_settings_all', 3600, function () {
+        $all = self::$localCache ?? Cache::remember('site_settings_all', 3600, function () {
             return static::pluck('value', 'key')->toArray();
         });
 
-        $localCache = $all;
+        self::$localCache = $all;
 
         if ($key === null) {
             return $all;
@@ -65,5 +65,7 @@ class Setting extends Model
         Cache::forget("setting_{$key}");
         Cache::forget('site_settings_all');
         Cache::forget('site_settings_types');
+        // Clear static in-memory cache so current request sees the update
+        self::$localCache = null;
     }
 }
