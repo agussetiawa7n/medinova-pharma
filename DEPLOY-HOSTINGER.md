@@ -127,8 +127,15 @@ php artisan storage:link
 # Run database migrations
 php artisan migrate
 
-# Seed admin user + demo data (optional)
-php artisan db:seed --class=AdminSeeder
+# Seed everything: admin user + all data + Filament permissions
+php artisan db:seed
+
+# This single command runs:
+#  ✓ AdminSeeder — admin@medinovapharma.com / Admin@1234 + roles
+#  ✓ DataSeeder — 77 settings, 7 categories, 8 brands, 18 products,
+#    banners, pages, coupons, orders, wallet
+#  ✓ shield:generate — creates Filament permissions for all resources
+#  ✓ Assigns all permissions to super_admin role
 
 # Cache everything for speed
 php artisan optimize
