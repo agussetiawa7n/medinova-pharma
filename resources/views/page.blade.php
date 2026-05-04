@@ -23,7 +23,7 @@
             <article class="cs_account_card cs_radius_10">
                 <div class="cs_plr_25" style="padding-top:30px; padding-bottom:30px;">
                     <div class="cs_static_page_content">
-                        {{ $page->content }}
+                        {!! strip_tags($page->content, '<h1><h2><h3><h4><h5><h6><p><ul><ol><li><a><strong><b><em><i><br><hr><blockquote><span><div><table><thead><tbody><tr><th><td><img><sup><sub><code><pre>') !!}
                     </div>
 
                     <div class="cs_height_40 cs_height_lg_30"></div>

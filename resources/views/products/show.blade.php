@@ -309,7 +309,7 @@
             <div class="tab-pane fade show active" id="pane-desc" role="tabpanel">
                 <div style="max-width:900px; line-height:1.8; color:#636363;">
                     @if($product->description)
-                        {{ $product->description }}
+                        {!! strip_tags($product->description, '<h1><h2><h3><h4><h5><h6><p><ul><ol><li><a><strong><b><em><i><br><hr><blockquote><span><div><table><thead><tbody><tr><th><td><img><sup><sub><code><pre>') !!}
                     @else
                         <p class="text-muted">No detailed description available.</p>
                     @endif
