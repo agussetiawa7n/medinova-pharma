@@ -226,7 +226,6 @@ Alpine.data('cartOffcanvas', () => ({
     loading: true,
     removing: {},
     _loadId: 0,
-    _lastLoadAt: 0,
     _initDone: false,
 
     init() {
@@ -242,8 +241,6 @@ Alpine.data('cartOffcanvas', () => ({
     },
 
     async load() {
-        // Debounce: skip if data was loaded less than 3 seconds ago
-        if (Date.now() - this._lastLoadAt < 3000 && this.items.length >= 0 && this._loadId > 0) return;
         const id = ++this._loadId;
         try {
             const data = await window.apiFetch('/ajax/cart/data');
@@ -254,7 +251,6 @@ Alpine.data('cartOffcanvas', () => ({
                 Alpine.store('cartPending').items = [];
                 // Keep header badge in sync
                 Alpine.store('cart').count = data.count || 0;
-                this._lastLoadAt = Date.now();
             }
         } catch (e) {
             // silent
