@@ -73,7 +73,7 @@
                 <h4>Newsletter</h4>
                 <p style="font-size:13.5px; margin-bottom:14px;">Get health tips &amp; special offers in your inbox.</p>
                 <div x-data="newsletterForm">
-                    <div x-show="submitted" class="d-flex align-items-center gap-2" style="color:#b81964; font-size:14px; font-weight:600;">
+                    <div x-show="submitted" x-cloak style="display:none; color:#b81964; font-size:14px; font-weight:600; align-items:center; gap:8px;">
                         <i class="fa-solid fa-circle-check"></i>
                         <span>You're subscribed! Thank you.</span>
                     </div>
