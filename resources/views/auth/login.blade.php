@@ -5,10 +5,14 @@
 
 @section('content')
 
+@php
+    $loginBcImg = \App\Models\Setting::get('auth.login_breadcrumb_image');
+    $loginSideImg = \App\Models\Setting::get('auth.login_side_image');
+@endphp
 @include('partials.breadcamp', [
     'bcTitle' => 'Member Login',
     'bcSubtitle' => 'Access your MediNova Pharma account to continue your wellness journey.',
-    'bcBg' => asset('assets/glowify/images/login_banner.jpeg'),
+    'bcBg' => $loginBcImg ? \Illuminate\Support\Facades\Storage::disk('public')->url($loginBcImg) : asset('assets/glowify/images/login_banner.jpeg'),
 ])
 
 <div class="cs_height_80 cs_height_lg_80"></div>
@@ -18,7 +22,7 @@
         <div class="row align-items-center cs_gap_y_40">
 
             <div class="col-xxl-5 col-xl-6 col-lg-7">
-                <img src="{{ asset('assets/glowify/images/login_img.jpeg') }}" alt="Login" class="cs_radius_10" style="width:100%; height:auto; object-fit:cover;">
+                <img src="{{ $loginSideImg ? \Illuminate\Support\Facades\Storage::disk('public')->url($loginSideImg) : asset('assets/glowify/images/login_img.jpeg') }}" alt="Login" class="cs_radius_10" style="width:100%; height:auto; object-fit:cover;">
             </div>
 
             <div class="col-lg-5 offset-xl-1">

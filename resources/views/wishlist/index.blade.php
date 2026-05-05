@@ -4,9 +4,12 @@
 
 @section('content')
 
+@php
+    $wlBcImg = \App\Models\Setting::get('auth.wishlist_breadcrumb_image');
+@endphp
 @include('partials.breadcamp', [
     'bcTitle' => 'Your MediNova Wish List',
-    'bcBg' => asset('assets/glowify/images/breadcamp_bg_9.jpeg'),
+    'bcBg' => $wlBcImg ? \Illuminate\Support\Facades\Storage::disk('public')->url($wlBcImg) : asset('assets/glowify/images/breadcamp_bg_9.jpeg'),
     'bcCrumbs' => [['label' => 'Home', 'url' => route('home')], ['label' => 'Wishlist']],
 ])
 

@@ -5,16 +5,20 @@
 
 @section('content')
 
+@php
+    $regBcImg = \App\Models\Setting::get('auth.register_breadcrumb_image');
+    $regSideImg = \App\Models\Setting::get('auth.register_side_image');
+@endphp
 @include('partials.breadcamp', [
     'bcTitle' => 'Sign-Up for Healthy Living',
     'bcSubtitle' => "Create your account — it's quick and easy.",
-    'bcBg' => asset('assets/glowify/images/signup_banner.jpeg'),
+    'bcBg' => $regBcImg ? \Illuminate\Support\Facades\Storage::disk('public')->url($regBcImg) : asset('assets/glowify/images/signup_banner.jpeg'),
 ])
 
 <div class="cs_height_80 cs_height_lg_80"></div>
 
 <div class="container">
-    <div class="cs_signup_card_wrap cs_gray_bg_4 cs_radius_10 cs_bg_filed" data-src="{{ asset('assets/glowify/images/signup_img.jpeg') }}">
+    <div class="cs_signup_card_wrap cs_gray_bg_4 cs_radius_10 cs_bg_filed" data-src="{{ $regSideImg ? \Illuminate\Support\Facades\Storage::disk('public')->url($regSideImg) : asset('assets/glowify/images/signup_img.jpeg') }}">
         <div class="cs_signup_card">
             <h2 class="cs_fs_36 cs_medium">CREATE ACCOUNT</h2>
             <p class="cs_light mb-0">Enter your details to create your account</p>
