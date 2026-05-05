@@ -41,6 +41,7 @@
     @stack('head')
 </head>
 <body>
+    @include('partials.preloader')
 
     {{-- ═══════════ Toast container (Alpine store) ═══════════ --}}
     <div x-data class="mn-toast-stack">
