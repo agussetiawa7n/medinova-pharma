@@ -35,6 +35,12 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 Route::get('/register', [RegisterController::class, 'showRegistrationForm'])->name('register')->middleware('guest');
 Route::post('/register', [RegisterController::class, 'register'])->middleware(['guest', 'throttle:3,60']);
 
+// Google OAuth
+Route::get('/auth/google', [\App\Http\Controllers\Auth\GoogleAuthController::class, 'redirect'])
+    ->name('auth.google')->middleware('guest');
+Route::get('/auth/google/callback', [\App\Http\Controllers\Auth\GoogleAuthController::class, 'callback'])
+    ->name('auth.google.callback')->middleware('guest');
+
 // --- Cart (guest-accessible) ---
 Route::get('/cart', [CartController::class, 'index'])->name('cart');
 Route::post('/cart/coupon', [CartController::class, 'applyCoupon'])->name('cart.coupon');
