@@ -242,32 +242,37 @@ PROMPT;
 
     private function buildImagePrompt(string $productName): string
     {
-        $style = \App\Models\Setting::get('ai.image_style', 'natural');
-
         return <<<PROMPT
-Professional pharmaceutical product photography for e-commerce.
-Product: {$productName}
+Ultra-realistic pharmaceutical product photography of "{$productName}"
 
-COMPOSITION RULES (follow exactly):
-- Pure white background, no shadows, no gradients, no surfaces
-- ONE product box placed at CENTER, occupying 65-70% of frame height
-- Product box must show the product name clearly on front face
-- ONE blister strip OR foil strip at BOTTOM-RIGHT corner, partially overlapping box
-- Strip occupies 20-25% of frame width, slightly angled
-- NO other objects, people, hands, surfaces, or scenery
+STRICT composition rules (do not break):
+- Pure #FFFFFF white background (studio seamless), no gradient, no texture
+- Soft natural shadow directly under product (very subtle, diffused)
+- ONE product box centered, occupying ~70% of frame
+- Perspective: slight 3D angle (front + right side visible, 10-15 degrees)
+- Product name "{$productName}" must be clearly printed on packaging (sharp, readable)
+- ONE blister pack (silver foil) placed bottom-right, slightly overlapping box
+- Blister pack size ~20-25% width, natural tilt, realistic pill shapes embossed
+- No extra objects, no props, no human elements, no reflections clutter
 
-QUALITY RULES:
-- Sharp focus, high contrast, well-lit, no overexposure
-- Text on packaging legible, crisp edges
-- Square 1:1 aspect ratio
+Material & realism:
+- Photorealistic cardboard texture (subtle grain, matte or semi-gloss finish)
+- Accurate lighting with softbox studio setup (top-left key light, soft shadows)
+- High dynamic range, no overexposure, no blown highlights
+- Micro details: edges, folds, print clarity, minor imperfections for realism
+- True-to-life colors, pharmaceutical design style (clean, minimal, clinical)
 
-EXCEPTIONS:
-- Syrup/liquid: BOTTLE at center, small label at bottom-right (not strip)
-- Cream/ointment/gel: TUBE at center, cap at bottom-right
-- Injection/vial: VIAL at center, small ampoule at bottom-right
-- Powder/sachet: SACHET PACK at center, single sachet at bottom-right
+Special cases:
+- If syrup: replace box with bottle (transparent or amber), add label, remove blister, add small label/tag bottom-right
+- If cream/ointment: show tube with cap placed separately at bottom-right
 
-Style: Clean, clinical, e-commerce product shot. {$style}.
+Camera & output:
+- Shot on high-end DSLR (85mm lens, f/8, ISO 100)
+- Sharp focus, no blur, no noise
+- 4K resolution, ultra-detailed
+- Square format (1:1), centered composition
+
+Style: Premium e-commerce product image, Amazon/Flipkart quality, hyper-realistic
 PROMPT;
     }
 
