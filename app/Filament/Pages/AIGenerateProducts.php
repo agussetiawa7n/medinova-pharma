@@ -28,6 +28,8 @@ class AIGenerateProducts extends Page
 
     public string $rawProductList = '';
     public $csvFile               = null;
+    public $txtFile               = null;
+    public $excelFile             = null;
     public array  $parsedNames    = [];
     public array  $queueItems     = [];
     public bool   $isGenerating   = false;
@@ -41,9 +43,29 @@ class AIGenerateProducts extends Page
         if (!empty($this->rawProductList)) {
             $this->parsedNames = $service->parseProductList($this->rawProductList);
         }
+        // CSV upload
         if ($this->csvFile) {
             $csv = file_get_contents($this->csvFile->getRealPath());
             $this->parsedNames = array_merge($this->parsedNames, $service->parseProductList($csv));
+        }
+        // TXT/Notepad upload
+        if ($this->txtFile) {
+            $txt = file_get_contents($this->txtFile->getRealPath());
+            $this->parsedNames = array_merge($this->parsedNames, $service->parseProductList($txt));
+        }
+        // Excel upload (.xlsx/.xls)
+        if ($this->excelFile) {
+            $rows = \PhpOffice\PhpSpreadsheet\IOFactory::load($this->excelFile->getRealPath())
+                ->getActiveSheet()->toArray();
+            $names = [];
+            foreach ($rows as $row) {
+                foreach ($row as $cell) {
+                    if (!empty(trim((string)$cell))) {
+                        $names[] = trim((string)$cell);
+                    }
+                }
+            }
+            $this->parsedNames = array_merge($this->parsedNames, $service->parseProductList(implode(',', $names)));
         }
         $this->parsedNames = array_values(array_unique($this->parsedNames));
         if (empty($this->parsedNames)) {
@@ -158,7 +180,8 @@ class AIGenerateProducts extends Page
             $item->update(['status' => 'saved']); $saved++;
         }
         Notification::make()->title("{$saved} products saved!")->success()->send();
-        $this->parsedNames = []; $this->queueItems = []; $this->rawProductList = ''; $this->csvFile = null;
+        $this->parsedNames = []; $this->queueItems = []; $this->rawProductList = '';
+        $this->csvFile = null; $this->txtFile = null; $this->excelFile = null;
         $this->currentStep = 1; $this->isGenerating = false; $this->totalCount = 0; $this->completedCount = 0;
     }
 
