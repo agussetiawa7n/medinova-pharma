@@ -10,87 +10,42 @@ use Illuminate\Support\Str;
 
 class AIProductService
 {
-    // ── TEXT GENERATION: Multi-provider router ──
+    // OpenRouter unified API — one key, 200+ models
+    private const BASE_URL = 'https://openrouter.ai/api/v1';
+
+    private function apiKey(): string
+    {
+        return \App\Models\Setting::get('ai.openrouter_api_key', config('services.openrouter.api_key', ''));
+    }
+
+    // ── TEXT GENERATION ──
 
     public function generateProductDetails(string $productName): array
     {
-        $provider = \App\Models\Setting::get('ai.text_model', 'openai/gpt-4o-mini');
-
-        return match (true) {
-            str_starts_with($provider, 'openai/')    => $this->callOpenAI($productName, $provider),
-            str_starts_with($provider, 'anthropic/') => $this->callAnthropic($productName),
-            str_starts_with($provider, 'google/')    => $this->callGemini($productName),
-            default                                  => $this->callOpenAI($productName, 'gpt-4o-mini'),
-        };
-    }
-
-    private function callOpenAI(string $productName, string $provider): array
-    {
-        $model    = explode('/', $provider)[1] ?? 'gpt-4o-mini';
-        $apiKey   = config('services.openai.api_key');
-        $temp     = (float) (\App\Models\Setting::get('ai.temperature', '0.7'));
+        $model     = \App\Models\Setting::get('ai.text_model', 'openai/gpt-5-mini');
+        $temp      = (float) (\App\Models\Setting::get('ai.temperature', '0.7'));
         $maxTokens = (int) (\App\Models\Setting::get('ai.max_tokens', '2000'));
 
         $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $apiKey,
+            'Authorization' => 'Bearer ' . $this->apiKey(),
             'Content-Type'  => 'application/json',
-        ])->post('https://api.openai.com/v1/chat/completions', [
+            'HTTP-Referer'  => config('app.url'),
+            'X-Title'       => 'MediNova Pharma',
+        ])->post(self::BASE_URL . '/chat/completions', [
             'model'       => $model,
             'temperature' => $temp,
             'max_tokens'  => $maxTokens,
             'messages'    => [
-                ['role' => 'system', 'content' => 'You are a pharmaceutical product expert. Return ONLY valid JSON, no explanation, no markdown backticks.'],
+                ['role' => 'system', 'content' => 'You are a pharmaceutical product expert. Return ONLY valid JSON, no markdown, no backticks.'],
                 ['role' => 'user',   'content' => $this->buildTextPrompt($productName)],
             ],
         ]);
 
         if (!$response->successful()) {
-            throw new \Exception('OpenAI API error: ' . $response->body());
+            throw new \Exception('OpenRouter API error: ' . $response->body());
         }
 
-        return $this->parseJsonResponse($response->json('choices.0.message.content'));
-    }
-
-    private function callAnthropic(string $productName): array
-    {
-        $maxTokens = (int) (\App\Models\Setting::get('ai.max_tokens', '2000'));
-
-        $response = Http::withHeaders([
-            'x-api-key'         => config('services.anthropic.api_key'),
-            'anthropic-version' => '2023-06-01',
-            'Content-Type'      => 'application/json',
-        ])->post('https://api.anthropic.com/v1/messages', [
-            'model'      => 'claude-3-5-sonnet-20241022',
-            'max_tokens' => $maxTokens,
-            'system'     => 'You are a pharmaceutical product expert. Return ONLY valid JSON, no explanation, no markdown.',
-            'messages'   => [['role' => 'user', 'content' => $this->buildTextPrompt($productName)]],
-        ]);
-
-        if (!$response->successful()) {
-            throw new \Exception('Anthropic API error: ' . $response->body());
-        }
-
-        return $this->parseJsonResponse($response->json('content.0.text'));
-    }
-
-    private function callGemini(string $productName): array
-    {
-        $apiKey = config('services.google_ai.api_key');
-        $temp   = (float) (\App\Models\Setting::get('ai.temperature', '0.7'));
-
-        $response = Http::post(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={$apiKey}",
-            [
-                'contents' => [['parts' => [['text' => $this->buildTextPrompt($productName)]]]],
-                'generationConfig' => ['temperature' => $temp, 'maxOutputTokens' => (int) (\App\Models\Setting::get('ai.max_tokens', '2000'))],
-            ]
-        );
-
-        if (!$response->successful()) {
-            throw new \Exception('Gemini API error: ' . $response->body());
-        }
-
-        return $this->parseJsonResponse($response->json('candidates.0.content.parts.0.text'));
+        return $this->parseJson($response->json('choices.0.message.content'));
     }
 
     private function buildTextPrompt(string $productName): string
@@ -99,36 +54,36 @@ class AIProductService
         $brands     = Brand::pluck('name')->implode(', ');
 
         return <<<PROMPT
-You are a pharmaceutical product expert. Given the medicine name below, generate accurate product details.
-Return ONLY a valid JSON object. No explanation, no markdown backticks.
+You are a pharmaceutical product expert. Generate product details for the medicine below.
+Return ONLY a valid JSON object. No explanation, no markdown.
 
-JSON fields required:
+Required JSON fields:
 {
   "name": "full product name with strength",
-  "short_description": "2-3 sentence summary of what this medicine does",
-  "description": "detailed HTML with h2, h3, ul tags covering: uses, benefits, dosage, side effects, warnings",
-  "price": float (realistic Indian market price in INR),
-  "compare_price": float (higher than price for discount display),
-  "category": "best matching category from: [{$categories}]",
-  "brand": "best matching brand from: [{$brands}]",
-  "tags": ["relevant", "tag", "array"],
+  "short_description": "2-3 sentence summary",
+  "description": "detailed HTML with h2, h3, ul tags: uses, benefits, dosage, side effects, warnings",
+  "price": float (Indian market price INR),
+  "compare_price": float (higher than price for discount),
+  "category": "best match from: [{$categories}]",
+  "brand": "best match from: [{$brands}]",
+  "tags": ["tag1", "tag2", "tag3"],
   "composition": "active ingredient(s) with strength",
-  "manufacturer": "manufacturing company name",
+  "manufacturer": "company name",
   "storage_conditions": "storage instructions",
-  "meta_title": "Buy {product name} Online - Best Price | Medinova",
-  "meta_description": "SEO description under 160 characters",
+  "meta_title": "Buy {name} Online - Best Price | Medinova",
+  "meta_description": "SEO description under 160 chars",
   "unit": "strip OR bottle OR tube OR box OR sachet",
-  "weight": float (approximate weight in grams),
-  "sku": "MED-{UPPERCASE_SHORT}-{3_DIGITS}",
+  "weight": float (grams),
+  "sku": "MED-{SHORT}-{DIGITS}",
   "requires_prescription": boolean,
   "is_featured": false
 }
 
-Medicine name: {$productName}
+Medicine: {$productName}
 PROMPT;
     }
 
-    // ── IMAGE GENERATION: Multi-provider router ──
+    // ── IMAGE GENERATION via OpenRouter ──
 
     public function generateImage(string $productName): ?string
     {
@@ -136,108 +91,53 @@ PROMPT;
             return null;
         }
 
-        $provider = \App\Models\Setting::get('ai.image_model', 'openai/dall-e-3');
+        $model = \App\Models\Setting::get('ai.image_model', 'openai/gpt-5-image-mini');
 
         try {
-            return match (true) {
-                str_starts_with($provider, 'openai/')      => $this->generateDallE($productName, $provider),
-                str_starts_with($provider, 'stability/')   => $this->generateStability($productName),
-                str_starts_with($provider, 'blackforest/') => $this->generateFlux($productName),
-                $provider === 'placeholder'                 => $this->placeholderImage($productName),
-                default                                     => $this->generateDallE($productName, 'dall-e-3'),
-            };
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->apiKey(),
+                'Content-Type'  => 'application/json',
+                'HTTP-Referer'  => config('app.url'),
+                'X-Title'       => 'MediNova Pharma',
+            ])->post(self::BASE_URL . '/chat/completions', [
+                'model'    => $model,
+                'messages' => [
+                    ['role' => 'user', 'content' => $this->buildImagePrompt($productName)],
+                ],
+            ]);
+
+            if (!$response->successful()) {
+                throw new \Exception('OpenRouter image error: ' . $response->body());
+            }
+
+            // OpenRouter returns image URL in the response content or as a separate field
+            $data = $response->json();
+
+            // Try to extract image URL from choices
+            $content = $data['choices'][0]['message']['content'] ?? '';
+            if (filter_var($content, FILTER_VALIDATE_URL)) {
+                return $content;
+            }
+
+            // Fallback: check for images array in response
+            if (!empty($data['choices'][0]['message']['images'])) {
+                return $data['choices'][0]['message']['images'][0]['url'] ?? null;
+            }
+
+            // If model returns base64 image in content
+            if (str_starts_with($content, 'data:image')) {
+                $imageData = explode(',', $content)[1] ?? '';
+                $tempPath  = storage_path('app/temp/' . Str::slug($productName) . '_raw.png');
+                if (!is_dir(dirname($tempPath))) mkdir(dirname($tempPath), 0755, true);
+                file_put_contents($tempPath, base64_decode($imageData));
+                return $tempPath;
+            }
+
+            return $this->placeholderImage($productName);
         } catch (\Exception $e) {
-            Log::error("Image generation failed for {$productName}: " . $e->getMessage());
+            Log::error("Image generation failed: {$productName}: " . $e->getMessage());
             return $this->placeholderImage($productName);
         }
-    }
-
-    private function generateDallE(string $productName, string $provider): string
-    {
-        $model  = explode('/', $provider)[1] ?? 'dall-e-3';
-        $apiKey = config('services.openai.api_key');
-        $style  = \App\Models\Setting::get('ai.image_style', 'natural');
-
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $apiKey,
-            'Content-Type'  => 'application/json',
-        ])->post('https://api.openai.com/v1/images/generations', [
-            'model'           => $model,
-            'prompt'          => $this->buildImagePrompt($productName),
-            'n'               => 1,
-            'size'            => '1024x1024',
-            'quality'         => $model === 'dall-e-3' ? 'hd' : 'standard',
-            'style'           => $style,
-            'response_format' => 'url',
-        ]);
-
-        if (!$response->successful()) {
-            throw new \Exception('DALL-E API error: ' . $response->body());
-        }
-
-        return $response->json('data.0.url');
-    }
-
-    private function generateStability(string $productName): string
-    {
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . config('services.stability.api_key'),
-            'Content-Type'  => 'application/json',
-            'Accept'        => 'application/json',
-        ])->post('https://api.stability.ai/v2beta/stable-image/generate/sd3', [
-            'prompt'        => $this->buildImagePrompt($productName),
-            'output_format' => 'png',
-            'width'         => 1024,
-            'height'        => 1024,
-        ]);
-
-        if (!$response->successful()) {
-            throw new \Exception('Stability API error: ' . $response->body());
-        }
-
-        $imageData = base64_decode($response->json('artifacts.0.base64'));
-        $tempPath  = storage_path('app/temp/' . Str::slug($productName) . '_raw.png');
-        if (!is_dir(dirname($tempPath))) mkdir(dirname($tempPath), 0755, true);
-        file_put_contents($tempPath, $imageData);
-        return $tempPath;
-    }
-
-    private function generateFlux(string $productName): string
-    {
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . config('services.flux.api_key'),
-            'Content-Type'  => 'application/json',
-        ])->post('https://api.bfl.ml/v1/flux-pro-1.1', [
-            'prompt' => $this->buildImagePrompt($productName),
-            'width'  => 1024,
-            'height' => 1024,
-        ]);
-
-        if (!$response->successful()) {
-            throw new \Exception('Flux API error: ' . $response->body());
-        }
-
-        return $this->pollFluxResult($response->json('id'));
-    }
-
-    private function pollFluxResult(string $requestId): string
-    {
-        for ($i = 0; $i < 30; $i++) {
-            sleep(2);
-            $result = Http::withHeaders([
-                'Authorization' => 'Bearer ' . config('services.flux.api_key'),
-            ])->get("https://api.bfl.ml/v1/get_result?id={$requestId}");
-
-            if ($result->json('status') === 'Ready') {
-                return $result->json('result.sample');
-            }
-        }
-        throw new \Exception('Flux image generation timed out');
-    }
-
-    private function placeholderImage(string $productName): string
-    {
-        return 'https://placehold.co/1024x1024/ffffff/333333?text=' . urlencode($productName);
     }
 
     private function buildImagePrompt(string $productName): string
@@ -294,9 +194,12 @@ PROMPT;
         return array_values(array_unique($products));
     }
 
-    // ── HELPERS ──
+    private function placeholderImage(string $productName): string
+    {
+        return 'https://placehold.co/1024x1024/ffffff/333333?text=' . urlencode($productName);
+    }
 
-    private function parseJsonResponse(string $content): array
+    private function parseJson(string $content): array
     {
         $content = preg_replace('/```json\s*/i', '', $content);
         $content = preg_replace('/```\s*/i', '', $content);
@@ -305,7 +208,7 @@ PROMPT;
         $data = json_decode($content, true);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \Exception('AI returned invalid JSON: ' . json_last_error_msg() . '. Raw: ' . substr($content, 0, 200));
+            throw new \Exception('Invalid JSON from AI: ' . json_last_error_msg());
         }
 
         return $data;
