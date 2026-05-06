@@ -52,5 +52,21 @@ return [
         'redirect'      => env('GOOGLE_REDIRECT_URI', '/auth/google/callback'),
     ],
 
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY'),
+    ],
+
+    'google_ai' => [
+        'api_key' => env('GOOGLE_AI_API_KEY'),
+    ],
+
+    'stability' => [
+        'api_key' => env('STABILITY_API_KEY'),
+    ],
+
+    'flux' => [
+        'api_key' => env('FLUX_API_KEY'),
+    ],
+
 ];
 
