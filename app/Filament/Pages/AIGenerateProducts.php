@@ -7,13 +7,17 @@ use App\Models\AIProductQueue;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
+use App\Services\AIProductService;
 use App\Services\ImageProcessingService;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Str;
+use Livewire\WithFileUploads;
 
 class AIGenerateProducts extends Page
 {
+    use WithFileUploads;
+
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-sparkles';
     protected static string|\UnitEnum|null $navigationGroup = 'Settings';
     protected static ?int $navigationSort = 6;
@@ -23,6 +27,7 @@ class AIGenerateProducts extends Page
     protected string $view = 'filament.pages.ai-generate-products';
 
     public string $rawProductList = '';
+    public $csvFile               = null;
     public array  $parsedNames    = [];
     public array  $queueItems     = [];
     public bool   $isGenerating   = false;
@@ -32,12 +37,19 @@ class AIGenerateProducts extends Page
 
     public function parseInput(): void
     {
-        if (empty($this->rawProductList)) {
-            Notification::make()->title('Please paste product names first.')->warning()->send();
+        $service = app(AIProductService::class);
+        if (!empty($this->rawProductList)) {
+            $this->parsedNames = $service->parseProductList($this->rawProductList);
+        }
+        if ($this->csvFile) {
+            $csv = file_get_contents($this->csvFile->getRealPath());
+            $this->parsedNames = array_merge($this->parsedNames, $service->parseProductList($csv));
+        }
+        $this->parsedNames = array_values(array_unique($this->parsedNames));
+        if (empty($this->parsedNames)) {
+            Notification::make()->title('No valid product names found.')->warning()->send();
             return;
         }
-        $service = app(\App\Services\AIProductService::class);
-        $this->parsedNames = $service->parseProductList($this->rawProductList);
         Notification::make()->title(count($this->parsedNames) . ' products parsed.')->success()->send();
     }
 
@@ -49,21 +61,15 @@ class AIGenerateProducts extends Page
 
     public function generateAll(): void
     {
-        if (empty($this->parsedNames)) {
-            Notification::make()->title('No products to generate.')->warning()->send();
-            return;
-        }
-
+        if (empty($this->parsedNames)) { Notification::make()->title('No products.')->warning()->send(); return; }
         $this->isGenerating = true;
         $this->totalCount   = count($this->parsedNames);
         $this->completedCount = 0;
         $this->currentStep  = 2;
-
-        foreach ($this->parsedNames as $productName) {
-            $queueItem = AIProductQueue::create(['product_name' => $productName, 'status' => 'pending']);
-            GenerateProductFromAI::dispatch($queueItem->id);
+        foreach ($this->parsedNames as $name) {
+            $q = AIProductQueue::create(['product_name' => $name, 'status' => 'pending']);
+            GenerateProductFromAI::dispatch($q->id);
         }
-
         $this->refreshQueueItems();
         Notification::make()->title("Generating {$this->totalCount} products...")->info()->send();
     }
@@ -71,27 +77,21 @@ class AIGenerateProducts extends Page
     public function pollStatus(): void
     {
         $this->refreshQueueItems();
-        $completed = collect($this->queueItems)->where('status', 'completed')->count();
-        $failed    = collect($this->queueItems)->where('status', 'failed')->count();
-        $total     = count($this->queueItems);
-        $this->completedCount = $completed + $failed;
-        if ($this->completedCount >= $total && $total > 0) {
-            $this->isGenerating = false;
-        }
+        $c = collect($this->queueItems)->whereIn('status', ['completed','failed','skipped'])->count();
+        $this->completedCount = $c;
+        if ($c >= $this->totalCount && $this->totalCount > 0) $this->isGenerating = false;
     }
 
     private function refreshQueueItems(): void
     {
-        $ids = AIProductQueue::whereIn('product_name', $this->parsedNames)->latest()->pluck('id')->toArray();
+        $ids = AIProductQueue::whereIn('product_name', $this->parsedNames)->pluck('id');
         $this->queueItems = AIProductQueue::whereIn('id', $ids)
-            ->orderByRaw("FIELD(status,'generating','pending','completed','failed')")
-            ->get()->toArray();
+            ->orderByRaw("FIELD(status,'generating','pending','completed','failed','skipped','saved')")->get()->toArray();
     }
 
     public function approveProduct(int $queueId): void
     {
-        $item = AIProductQueue::findOrFail($queueId);
-        $item->update(['approved_by' => auth()->id(), 'approved_at' => now()]);
+        AIProductQueue::findOrFail($queueId)->update(['approved_by' => auth()->id(), 'approved_at' => now()]);
         $this->refreshQueueItems();
     }
 
@@ -103,73 +103,68 @@ class AIGenerateProducts extends Page
 
     public function regenerateImage(int $queueId): void
     {
-        app(ImageProcessingService::class)->regenerate($queueId);
-        $this->refreshQueueItems();
-        Notification::make()->title('Image regenerated.')->success()->send();
+        try {
+            app(ImageProcessingService::class)->regenerate($queueId);
+            $this->refreshQueueItems();
+            Notification::make()->title('Image regenerated.')->success()->send();
+        } catch (\Exception $e) {
+            Notification::make()->title('Failed: ' . $e->getMessage())->danger()->send();
+        }
     }
 
     public function regenerateText(int $queueId): void
     {
-        $item  = AIProductQueue::findOrFail($queueId);
-        $ai    = app(\App\Services\AIProductService::class);
-        $data  = $ai->generateProductDetails($item->product_name);
-        $item->update(['generated_data' => $data]);
+        $item = AIProductQueue::findOrFail($queueId);
+        $item->update(['status' => 'generating']);
+        try {
+            $data = app(AIProductService::class)->generateProductDetails($item->product_name);
+            $item->update(['generated_data' => $data, 'status' => 'completed']);
+        } catch (\Exception $e) {
+            $item->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
+        }
         $this->refreshQueueItems();
-        Notification::make()->title('Product details regenerated.')->success()->send();
+        Notification::make()->title('Text regenerated.')->success()->send();
     }
 
     public function saveApproved(): void
     {
         $approved = AIProductQueue::where('status', 'completed')->whereNotNull('approved_by')->get();
-        $savedCount = 0;
-
+        if ($approved->isEmpty()) { Notification::make()->title('No approved products.')->warning()->send(); return; }
+        $saved = 0;
         foreach ($approved as $item) {
-            try {
-                $data = $item->generated_data ?? [];
-                $catId = Category::where('name', $data['category'] ?? '')->value('id');
-                $brandId = Brand::where('name', $data['brand'] ?? '')->value('id');
-
-                Product::create([
-                    'name'               => $data['name'] ?? $item->product_name,
-                    'slug'               => Str::slug($data['name'] ?? $item->product_name),
-                    'short_description'  => $data['short_description'] ?? '',
-                    'description'        => $data['description'] ?? '',
-                    'price'              => $data['price'] ?? 0,
-                    'compare_price'      => $data['compare_price'] ?? null,
-                    'sku'                => $data['sku'] ?? null,
-                    'category_id'        => $catId,
-                    'brand_id'           => $brandId,
-                    'tags'               => $data['tags'] ?? [],
-                    'composition'        => $data['composition'] ?? '',
-                    'manufacturer'       => $data['manufacturer'] ?? '',
-                    'storage_conditions' => $data['storage_conditions'] ?? '',
-                    'meta_title'         => $data['meta_title'] ?? '',
-                    'meta_description'   => $data['meta_description'] ?? '',
-                    'unit'               => $data['unit'] ?? 'strip',
-                    'weight'             => $data['weight'] ?? null,
-                    'requires_prescription' => $data['requires_prescription'] ?? false,
-                    'thumbnail'          => $item->image_path,
-                    'is_active'          => true,
-                ]);
-
-                $item->update(['status' => 'saved']);
-                $savedCount++;
-            } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error("Save failed: {$item->product_name}: " . $e->getMessage());
-            }
+            $d = $item->generated_data ?? [];
+            Product::create([
+                'name' => $d['name'] ?? $item->product_name,
+                'slug' => Str::slug($d['name'] ?? $item->product_name),
+                'short_description' => $d['short_description'] ?? '',
+                'description' => $d['description'] ?? '',
+                'price' => $d['price'] ?? 0,
+                'compare_price' => $d['compare_price'] ?? null,
+                'sku' => $d['sku'] ?? null,
+                'category_id' => Category::where('name', $d['category'] ?? '')->value('id'),
+                'brand_id' => Brand::where('name', $d['brand'] ?? '')->value('id'),
+                'tags' => $d['tags'] ?? [],
+                'composition' => $d['composition'] ?? '',
+                'manufacturer' => $d['manufacturer'] ?? '',
+                'storage_conditions' => $d['storage_conditions'] ?? '',
+                'meta_title' => $d['meta_title'] ?? '',
+                'meta_description' => $d['meta_description'] ?? '',
+                'unit' => $d['unit'] ?? 'strip',
+                'weight' => $d['weight'] ?? null,
+                'requires_prescription' => $d['requires_prescription'] ?? false,
+                'thumbnail' => $item->image_path,
+                'is_active' => true,
+            ]);
+            $item->update(['status' => 'saved']); $saved++;
         }
-
-        Notification::make()->title("{$savedCount} products saved!")->success()->send();
-        $this->parsedNames = [];
-        $this->queueItems  = [];
-        $this->rawProductList = '';
-        $this->currentStep = 1;
-        $this->isGenerating = false;
+        Notification::make()->title("{$saved} products saved!")->success()->send();
+        $this->parsedNames = []; $this->queueItems = []; $this->rawProductList = ''; $this->csvFile = null;
+        $this->currentStep = 1; $this->isGenerating = false; $this->totalCount = 0; $this->completedCount = 0;
     }
 
     public function getProgressPercent(): int
     {
         if ($this->totalCount === 0) return 0;
-        return (int) round(($this->completedCount / $this->totalCount) * 100);
+        return min(100, (int)round(($this->completedCount / $this->totalCount) * 100));
     }
 }
