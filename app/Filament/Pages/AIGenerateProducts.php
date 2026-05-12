@@ -10,9 +10,7 @@ use App\Models\Category;
 use App\Models\Product;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Livewire\WithFileUploads;
 
@@ -138,20 +136,22 @@ class AIGenerateProducts extends Page
             ->whereNull('approved_by')
             ->delete();
 
-        // Create items + dispatch with 2s delay between jobs (prevents API rate limits)
-        $delay = 0;
+        // Create all queue items as 'pending'
         foreach ($this->parsedNames as $name) {
-            $item = AIProductQueue::create(['product_name' => $name, 'status' => 'pending']);
-            dispatch(new GenerateProductTextJob($item->id))->delay(now()->addSeconds($delay));
-            $delay += 2;
+            AIProductQueue::create(['product_name' => $name, 'status' => 'pending']);
         }
 
         $this->isGenerating   = true;
         $this->totalCount     = count($this->parsedNames);
         $this->completedCount = 0;
+        $this->workerStatus   = 'running';
         $this->refreshQueueItems();
 
-        Notification::make()->title("{$this->totalCount} jobs dispatched to queue.")->info()->send();
+        Notification::make()
+            ->title("{$this->totalCount} products queued.")
+            ->body('Click \'▶ Start Worker\' or wait — processing will begin via cron.')
+            ->info()
+            ->send();
     }
 
     public function pollStatus(): void
@@ -211,23 +211,24 @@ class AIGenerateProducts extends Page
 
     public function checkWorkerStatus(): void
     {
-        // Check if there are any pending jobs in the jobs table
-        $pendingJobs = DB::table('jobs')->count();
-        $failedJobs = DB::table('failed_jobs')->where('failed_at', '>=', now()->subMinutes(5))->count();
+        $pendingItems    = collect($this->queueItems)->whereIn('status', ['pending'])->count();
+        $processingItems = collect($this->queueItems)->whereIn('status', ['generating', 'text_generated'])->count();
 
-        // Check if any queue item has been stuck (updated > 3 mins ago but not completed)
-        $staleItems = AIProductQueue::whereIn('status', ['generating', 'text_generated'])
-            ->where('updated_at', '<', now()->subMinutes(3))
+        // Check if any queue item has been stuck (updated > 5 mins ago but not completed)
+        // Use 5 min threshold since image generation can take 2-3 min on shared hosting
+        $staleItems = AIProductQueue::whereIn('status', ['generating'])
+            ->where('updated_at', '<', now()->subMinutes(5))
             ->count();
 
-        if ($pendingJobs > 0 || collect($this->queueItems)->whereIn('status', ['generating', 'text_generated'])->isNotEmpty()) {
+        if ($processingItems > 0) {
             if ($staleItems > 0) {
-                $this->workerStatus = 'stale'; // Worker might have crashed
+                $this->workerStatus = 'stale';
             } else {
                 $this->workerStatus = 'running';
             }
-        } elseif (collect($this->queueItems)->where('status', 'pending')->isNotEmpty()) {
-            $this->workerStatus = 'stopped'; // Jobs waiting but nothing processing
+        } elseif ($pendingItems > 0) {
+            // Pending but nothing processing → need to start worker
+            $this->workerStatus = 'stopped';
         } else {
             $this->workerStatus = 'idle';
         }
@@ -235,40 +236,14 @@ class AIGenerateProducts extends Page
 
     public function startQueueWorker(): void
     {
-        // On shared hosting, background processes don't work.
-        // Detect environment and route accordingly.
-        $isSharedHosting = !function_exists('exec') || (strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN' && !is_writable('/proc'));
-
-        if (!$isSharedHosting) {
-            try {
-                $phpPath = PHP_BINARY;
-                $artisan = base_path('artisan');
-                $logFile = storage_path('logs/queue-worker.log');
-
-                if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-                    $cmd = "cmd /c start /MIN /B \"{$phpPath}\" \"{$artisan}\" queue:work --timeout=350 --tries=2 --stop-when-empty > \"{$logFile}\" 2>&1";
-                    pclose(popen($cmd, 'r'));
-                } else {
-                    $cmd = "\"{$phpPath}\" \"{$artisan}\" queue:work --timeout=350 --tries=2 --stop-when-empty > \"{$logFile}\" 2>&1 &";
-                    exec($cmd);
-                }
-
-                $this->workerStatus = 'running';
-                Notification::make()->title('Queue worker started!')->body('Processing will begin shortly.')->success()->send();
-                Log::info('Queue worker started from frontend');
-                return;
-            } catch (\Exception $e) {
-                Log::warning('Background worker failed, falling back to sync: ' . $e->getMessage());
-            }
-        }
-
-        // Shared hosting / fallback: run synchronously
+        // Hostinger shared hosting: background processes are not supported.
+        // Always process synchronously via processNow().
         $this->processNow();
     }
 
     /**
-     * Process pending jobs synchronously — works on ALL hosting including shared.
-     * Uses the ai:process-queue Artisan command which handles timeouts safely.
+     * Process pending jobs synchronously — safe for Hostinger shared hosting.
+     * Processes ONE product at a time (text + image) to avoid PHP timeouts.
      */
     public function processNow(): void
     {
@@ -280,28 +255,71 @@ class AIGenerateProducts extends Page
         }
 
         try {
-            set_time_limit(400);
+            // Set high timeout — image generation can take 2-3 minutes per product
+            set_time_limit(600);
+            ini_set('max_execution_time', 600);
 
-            // Run our custom safe command synchronously
-            \Artisan::call('ai:process-queue', ['--max' => 5]);
-
-            $output = \Artisan::output();
-            Log::info('ai:process-queue output: ' . $output);
-
-            $this->refreshQueueItems();
             $this->workerStatus = 'running';
+
+            // Process max 3 items per click to stay within hosting limits
+            $batchSize = 3;
+            $processed = 0;
+
+            // Step 1: Process pending → text_generated
+            $textItems = AIProductQueue::where('status', 'pending')
+                ->orderBy('created_at')
+                ->take($batchSize)
+                ->get();
+
+            foreach ($textItems as $item) {
+                $this->currentTask = "📝 Generating text for \"{$item->product_name}\"";
+                dispatch_sync(new GenerateProductTextJob($item->id));
+                $processed++;
+            }
+
+            // Step 2: Process text_generated → completed (image)
+            $imageItems = AIProductQueue::where('status', 'text_generated')
+                ->orderBy('updated_at')
+                ->take($batchSize - $processed)
+                ->get();
+
+            foreach ($imageItems as $item) {
+                $this->currentTask = "🖼️ Generating image for \"{$item->product_name}\"";
+                dispatch_sync(new GenerateProductImageJob($item->id));
+                $processed++;
+            }
+
+            $this->currentTask = '';
+            $this->refreshQueueItems();
+            $this->completedCount = collect($this->queueItems)
+                ->whereIn('status', ['completed', 'failed', 'skipped'])->count();
 
             $stillPending = AIProductQueue::whereIn('status', ['pending', 'text_generated'])->count();
 
-            Notification::make()
-                ->title('⚡ Processing complete!')
-                ->body($stillPending > 0 ? "Done this batch. {$stillPending} items still pending — click again." : 'All items processed!')
-                ->success()
-                ->send();
+            if ($stillPending > 0) {
+                $this->workerStatus = 'stopped'; // Needs another click
+                Notification::make()
+                    ->title("⚡ Batch done! {$processed} processed.")
+                    ->body("{$stillPending} items still pending — click '▶ Start Worker' again.")
+                    ->warning()
+                    ->send();
+            } else {
+                $this->workerStatus = 'idle';
+                Notification::make()
+                    ->title('✅ All products processed!')
+                    ->body('Review the results and approve products to save them.')
+                    ->success()
+                    ->send();
+            }
 
         } catch (\Exception $e) {
             Log::error('processNow failed: ' . $e->getMessage());
-            Notification::make()->title('Processing failed')->body($e->getMessage())->danger()->send();
+            $this->workerStatus = 'stale';
+            Notification::make()
+                ->title('Processing error')
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
         }
     }
 

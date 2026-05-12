@@ -54,6 +54,14 @@ return new class extends Migration
                 'variables' => json_encode(['{{customer_name}}', '{{reset_url}}']),
                 'is_active' => true,
             ],
+            [
+                'key'       => 'welcome',
+                'label'     => 'Welcome Email',
+                'subject'   => '🎉 Welcome to MediNova Pharma, {{customer_name}}!',
+                'body'      => '<h2>Welcome to MediNova Pharma, {{customer_name}}!</h2><p>We\'re thrilled to have you on board. Your account has been created successfully.</p><p>Start exploring our wide range of pharmaceutical products and enjoy a seamless shopping experience.</p><p><a href="{{dashboard_link}}" style="background:#e63946;color:#fff;padding:10px 20px;border-radius:5px;text-decoration:none;">Go to Dashboard</a></p><p>If you have any questions, feel free to contact our support team.</p><p>Warm regards,<br><strong>MediNova Pharma Team</strong></p>',
+                'variables' => json_encode(['{{customer_name}}', '{{dashboard_link}}', '{{unsubscribe_link}}']),
+                'is_active' => true,
+            ],
         ];
 
         foreach ($templates as $template) {
