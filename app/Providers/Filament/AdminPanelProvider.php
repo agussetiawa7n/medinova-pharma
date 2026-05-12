@@ -47,14 +47,15 @@ class AdminPanelProvider extends PanelProvider
                 ],
                 'gray' => Color::Slate,
             ])
+            ->favicon(asset('assets/glowify/images/favicon/favicon-32x32.png'))
             ->navigationGroups([
-                NavigationGroup::make('Homepage'),
                 NavigationGroup::make('Catalog'),
                 NavigationGroup::make('Orders & Customers'),
                 NavigationGroup::make('Marketing'),
                 NavigationGroup::make('Content'),
                 NavigationGroup::make('Finance'),
                 NavigationGroup::make('Settings'),
+                NavigationGroup::make('Homepage'),
                 NavigationGroup::make('Access Control'),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\MailService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -12,6 +13,10 @@ use Laravel\Socialite\Facades\Socialite;
 
 class GoogleAuthController extends Controller
 {
+    public function __construct(
+        private readonly MailService $mailService,
+    ) {}
+
     public function redirect()
     {
         return Socialite::driver('google')->redirect();
@@ -24,6 +29,8 @@ class GoogleAuthController extends Controller
         } catch (\Exception $e) {
             return redirect()->route('login')->withErrors(['email' => 'Google login failed. Please try again.']);
         }
+
+        $isNewUser = false;
 
         // Try to find existing user by google_id or email
         $user = User::where('google_id', $googleUser->getId())
@@ -40,7 +47,8 @@ class GoogleAuthController extends Controller
                 ]);
             }
         } else {
-            // New user — register
+            // New user — register with auto-verified email
+            $isNewUser = true;
             $name = trim($googleUser->getName() ?: explode('@', $googleUser->getEmail())[0]);
             $user = User::create([
                 'name'              => $name,
@@ -54,6 +62,20 @@ class GoogleAuthController extends Controller
         }
 
         Auth::login($user, true);
+
+        // Send welcome email to new users (Google auto-verifies, so skip verification step)
+        if ($isNewUser) {
+            $this->mailService->sendTemplateEmail(
+                'welcome',
+                $user->email,
+                $user->name,
+                [
+                    '{{customer_name}}'  => $user->name,
+                    '{{dashboard_link}}' => url('/dashboard'),
+                    '{{unsubscribe_link}}' => url('/unsubscribe'),
+                ],
+            );
+        }
 
         return redirect()->intended(route('dashboard'));
     }

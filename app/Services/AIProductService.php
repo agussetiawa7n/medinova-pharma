@@ -18,15 +18,52 @@ class AIProductService
         return \App\Models\Setting::get('ai.openrouter_api_key', config('services.openrouter.api_key', ''));
     }
 
+    // ── LIGHTWEIGHT PING ──
+
+    public function ping(): array
+    {
+        $response = Http::connectTimeout(5)->timeout(8)->withHeaders([
+            'Authorization' => 'Bearer ' . $this->apiKey(),
+            'Content-Type'  => 'application/json',
+        ])->post(self::BASE_URL . '/chat/completions', [
+            'model'       => \App\Models\Setting::get('ai.text_model', 'openai/gpt-4o'),
+            'max_tokens'  => 5,
+            'messages'    => [
+                ['role' => 'user', 'content' => 'Say OK'],
+            ],
+        ]);
+
+        if (!$response->successful()) {
+            throw new \Exception('API error: ' . $response->body());
+        }
+
+        return $response->json();
+    }
+
     // ── TEXT GENERATION ──
 
     public function generateProductDetails(string $productName): array
     {
-        $model     = \App\Models\Setting::get('ai.text_model', 'openai/gpt-5-mini');
-        $temp      = (float) (\App\Models\Setting::get('ai.temperature', '0.7'));
+        set_time_limit(60);
+
+        $model     = \App\Models\Setting::get('ai.text_model', 'openai/gpt-4o');
+        $temp      = (float) (\App\Models\Setting::get('ai.temperature', '0.3'));
         $maxTokens = (int) (\App\Models\Setting::get('ai.max_tokens', '2000'));
 
-        $response = Http::withHeaders([
+        $systemPrompt = <<<'SYS'
+You are a pharmaceutical product data specialist with deep knowledge of Indian and international pharma brands, generics, and OTC products.
+
+CRITICAL ACCURACY RULES — FOLLOW STRICTLY:
+1. NEVER fabricate or guess manufacturer, brand, or composition. If you are not 100% certain, SEARCH THE WEB or write "Unknown".
+2. The product name itself often contains the brand name and strength — extract data FROM the name first.
+3. For Indian pharma products: carefully identify the REAL manufacturer (e.g., Healing Pharma, Sunrise Remedies, Cipla, Sun Pharma, Mankind, etc.). Do NOT default to Cipla or any big brand unless you are certain.
+4. The brand is usually the FIRST word(s) in the product name before the strength/dosage form (e.g., "Malegra Oral Jelly" → brand is "Malegra", NOT "Cipla").
+5. Composition must match the ACTUAL active ingredient for that specific branded product.
+6. Prices should be realistic US wholesale/retail pharmacy prices in USD.
+7. Return ONLY valid JSON. No markdown, no backticks, no explanation text.
+SYS;
+
+        $response = Http::connectTimeout(10)->timeout(40)->withHeaders([
             'Authorization' => 'Bearer ' . $this->apiKey(),
             'Content-Type'  => 'application/json',
             'HTTP-Referer'  => config('app.url'),
@@ -35,8 +72,11 @@ class AIProductService
             'model'       => $model,
             'temperature' => $temp,
             'max_tokens'  => $maxTokens,
+            'plugins'     => [
+                ['id' => 'web'] // Enable OpenRouter web search for live accuracy
+            ],
             'messages'    => [
-                ['role' => 'system', 'content' => 'You are a pharmaceutical product expert. Return ONLY valid JSON, no markdown, no backticks.'],
+                ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user',   'content' => $this->buildTextPrompt($productName)],
             ],
         ]);
@@ -54,126 +94,98 @@ class AIProductService
         $brands     = Brand::pluck('name')->implode(', ');
 
         return <<<PROMPT
-You are a pharmaceutical product expert. Generate product details for the medicine below.
-Return ONLY a valid JSON object. No explanation, no markdown.
+Generate accurate pharmaceutical product data for: "{$productName}"
 
-Required JSON fields:
+IMPORTANT INSTRUCTIONS:
+- Extract the brand name directly from the product name (usually the first word before strength/form).
+- Identify the REAL manufacturer by searching the web. Do NOT guess.
+- The composition must be the ACTUAL active ingredient(s) for this specific product.
+- Price in USD (realistic US pharmacy price).
+- Category: Try to pick from [{$categories}]. If none fit, create a short, accurate new category (e.g., 'Skin Care', 'Diabetes', 'Cardiac').
+- Brand MUST be one of: [{$brands}]. If no match, use the closest or the brand extracted from the product name.
+- SKU format: MED-{first 3 letters of brand}-{strength numbers}, e.g., MED-MAL-100
+
+Return this exact JSON structure:
 {
-  "name": "full product name with strength",
-  "short_description": "2-3 sentence summary",
-  "description": "detailed HTML with h2, h3, ul tags: uses, benefits, dosage, side effects, warnings",
-  "price": float (Indian market price INR),
-  "compare_price": float (higher than price for discount),
-  "category": "best match from: [{$categories}]",
-  "brand": "best match from: [{$brands}]",
-  "tags": ["tag1", "tag2", "tag3"],
-  "composition": "active ingredient(s) with strength",
-  "manufacturer": "company name",
-  "storage_conditions": "storage instructions",
-  "meta_title": "Buy {name} Online - Best Price | Medinova",
-  "meta_description": "SEO description under 160 chars",
-  "unit": "strip OR bottle OR tube OR box OR sachet",
-  "weight": float (grams),
-  "sku": "MED-{SHORT}-{DIGITS}",
-  "requires_prescription": boolean,
-  "is_featured": false
+"name":"{$productName}",
+"short_description":"2-3 sentence accurate medical summary of this specific product",
+"description":"<h2>About {$productName}</h2><p>overview</p><h3>Uses & Benefits</h3><ul><li>...</li></ul><h3>Dosage</h3><p>...</p><h3>Side Effects</h3><ul><li>...</li></ul><h3>Precautions</h3><ul><li>...</li></ul>",
+"price":float_USD,
+"compare_price":float_slightly_higher_than_price_USD,
+"category":"matched or accurately created category",
+"brand":"exact match from brand list above or extracted from product name",
+"tags":["relevant","medical","tags"],
+"composition":"Exact active ingredient(s) with strength (e.g., Sildenafil Citrate 100mg)",
+"manufacturer":"Real manufacturer company name (NOT guessed)",
+"storage_conditions":"Specific storage requirements",
+"meta_title":"Buy {$productName} Online | Medinova Pharma",
+"meta_description":"SEO description under 155 characters for {$productName}",
+"unit":"strip|bottle|tube|box|sachet|vial (pick most appropriate)",
+"weight":float_grams_realistic,
+"sku":"MED-XXX-000",
+"requires_prescription":true_or_false,
+"is_featured":false
 }
-
-Medicine: {$productName}
 PROMPT;
     }
 
-    // ── IMAGE GENERATION via OpenRouter ──
+    // ── IMAGE GENERATION PIPELINE ──
 
     public function generateImage(string $productName): ?string
     {
-        if (!(bool) \App\Models\Setting::get('ai.generate_images', 'true')) {
+        if (\App\Models\Setting::get('ai.generate_images', '1') !== '1') {
             return null;
         }
 
-        $model = \App\Models\Setting::get('ai.image_model', 'openai/gpt-5-image-mini');
+        set_time_limit(300);
+
+        $slug    = Str::slug($productName);
+        $tempDir = str_replace('\\', '/', storage_path('app/temp'));
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
+        $refPath    = null;
+        $rawOutput  = null;
 
         try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey(),
-                'Content-Type'  => 'application/json',
-                'HTTP-Referer'  => config('app.url'),
-                'X-Title'       => 'MediNova Pharma',
-            ])->post(self::BASE_URL . '/chat/completions', [
-                'model'    => $model,
-                'messages' => [
-                    ['role' => 'user', 'content' => $this->buildImagePrompt($productName)],
-                ],
-            ]);
-
-            if (!$response->successful()) {
-                throw new \Exception('OpenRouter image error: ' . $response->body());
+            // ── STEP 1+2: Search & download reference image ──
+            if (\App\Models\Setting::get('ai.enable_image_search', '1') === '1') {
+                Log::info("Image pipeline: Searching reference for [{$productName}]");
+                $refPath = app(ImageSearchService::class)
+                    ->searchAndDownloadBest($productName, $slug);
             }
 
-            // OpenRouter returns image URL in the response content or as a separate field
-            $data = $response->json();
+            // ── STEP 3+4+5: Edit with reference OR pure generation ──
+            $editService = app(ImageEditService::class);
 
-            // Try to extract image URL from choices
-            $content = $data['choices'][0]['message']['content'] ?? '';
-            if (filter_var($content, FILTER_VALIDATE_URL)) {
-                return $content;
+            if ($refPath) {
+                Log::info("Image pipeline: Editing with reference for [{$productName}]");
+                $rawOutput = $editService->editWithReference($refPath, $productName, $slug);
             }
 
-            // Fallback: check for images array in response
-            if (!empty($data['choices'][0]['message']['images'])) {
-                return $data['choices'][0]['message']['images'][0]['url'] ?? null;
+            // Fallback: no reference or edit failed → locked-prompt generation
+            if (!$rawOutput) {
+                Log::info("Image pipeline: Falling back to locked-prompt generation for [{$productName}]");
+                $rawOutput = $editService->generateWithLockedPrompt($productName, $slug);
             }
 
-            // If model returns base64 image in content
-            if (str_starts_with($content, 'data:image')) {
-                $imageData = explode(',', $content)[1] ?? '';
-                $tempPath  = storage_path('app/temp/' . Str::slug($productName) . '_raw.png');
-                if (!is_dir(dirname($tempPath))) mkdir(dirname($tempPath), 0755, true);
-                file_put_contents($tempPath, base64_decode($imageData));
-                return $tempPath;
-            }
-
-            return $this->placeholderImage($productName);
         } catch (\Exception $e) {
-            Log::error("Image generation failed: {$productName}: " . $e->getMessage());
+            Log::error("Image pipeline exception for [{$productName}]: " . $e->getMessage());
+        } finally {
+            // ── STEP 9: Always clean up reference temp file ──
+            if ($refPath && file_exists($refPath)) {
+                @unlink($refPath);
+            }
+        }
+
+        if (!$rawOutput) {
+            Log::warning("Image pipeline: All methods failed for [{$productName}], using placeholder");
             return $this->placeholderImage($productName);
         }
-    }
 
-    private function buildImagePrompt(string $productName): string
-    {
-        return <<<PROMPT
-Ultra-realistic pharmaceutical product photography of "{$productName}"
-
-STRICT composition rules (do not break):
-- Pure #FFFFFF white background (studio seamless), no gradient, no texture
-- Soft natural shadow directly under product (very subtle, diffused)
-- ONE product box centered, occupying ~70% of frame
-- Perspective: slight 3D angle (front + right side visible, 10-15 degrees)
-- Product name "{$productName}" must be clearly printed on packaging (sharp, readable)
-- ONE blister pack (silver foil) placed bottom-right, slightly overlapping box
-- Blister pack size ~20-25% width, natural tilt, realistic pill shapes embossed
-- No extra objects, no props, no human elements, no reflections clutter
-
-Material & realism:
-- Photorealistic cardboard texture (subtle grain, matte or semi-gloss finish)
-- Accurate lighting with softbox studio setup (top-left key light, soft shadows)
-- High dynamic range, no overexposure, no blown highlights
-- Micro details: edges, folds, print clarity, minor imperfections for realism
-- True-to-life colors, pharmaceutical design style (clean, minimal, clinical)
-
-Special cases:
-- If syrup: replace box with bottle (transparent or amber), add label, remove blister, add small label/tag bottom-right
-- If cream/ointment: show tube with cap placed separately at bottom-right
-
-Camera & output:
-- Shot on high-end DSLR (85mm lens, f/8, ISO 100)
-- Sharp focus, no blur, no noise
-- 4K resolution, ultra-detailed
-- Square format (1:1), centered composition
-
-Style: Premium e-commerce product image, Amazon/Flipkart quality, hyper-realistic
-PROMPT;
+        Log::info("Image pipeline: SUCCESS for [{$productName}]", ['raw' => $rawOutput]);
+        return $rawOutput;
     }
 
     // ── LIST PARSER ──

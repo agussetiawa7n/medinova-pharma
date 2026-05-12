@@ -17,6 +17,7 @@ class OrderService
         private readonly CartService            $cartService,
         private readonly PaymentGatewayManager  $paymentManager,
         private readonly PricingService         $pricingService,
+        private readonly MailService            $mailService,
     ) {}
 
     public function createOrder(array $data): Order
@@ -113,6 +114,11 @@ class OrderService
                 'created_by' => Auth::id(),
             ]);
 
+            // Send order confirmation email for COD (no payment step needed)
+            if ($order->payment_method === PaymentMethod::COD || $order->payment_method === PaymentMethod::Wallet) {
+                $this->sendOrderConfirmation($order);
+            }
+
             return $order;
         });
     }
@@ -130,6 +136,11 @@ class OrderService
             'status' => OrderStatus::Confirmed->value,
             'note'   => 'Payment received via ' . $order->payment_method->label(),
         ]);
+
+        // Send confirmation email for online payments
+        if (!in_array($order->payment_method, [PaymentMethod::COD, PaymentMethod::Wallet], true)) {
+            $this->sendOrderConfirmation($order);
+        }
     }
 
     public function updateStatus(Order $order, string $status, string $note = '', ?int $adminId = null): void
@@ -151,6 +162,11 @@ class OrderService
             'note'       => $note,
             'created_by' => $adminId ?? Auth::id(),
         ]);
+
+        // Send tracking update when order is shipped
+        if ($status === OrderStatus::Shipped->value) {
+            $this->sendTrackingUpdate($order);
+        }
     }
 
     public function cancelOrder(Order $order, string $reason = ''): void
@@ -166,6 +182,40 @@ class OrderService
         if ($order->wallet_amount_used > 0) {
             $wallet = Wallet::where('user_id', $order->user_id)->first();
             $wallet?->credit($order->wallet_amount_used, 'Refund for cancelled order #' . $order->order_number, 'order', $order->id);
+        }
+    }
+
+    private function sendOrderConfirmation(Order $order): void
+    {
+        try {
+            $this->mailService->sendTemplateEmail(
+                'order_complete',
+                $order->user?->email,
+                $order->shipping_name,
+                $this->mailService->orderVariables($order),
+            );
+        } catch (\Exception $e) {
+            report($e);
+        }
+    }
+
+    private function sendTrackingUpdate(Order $order): void
+    {
+        try {
+            $vars = $this->mailService->orderVariables($order);
+            $vars['{{tracking_number}}'] = $order->tracking_number ?? '—';
+            $vars['{{tracking_url}}']    = $order->tracking_url ?? url('/orders/' . $order->id);
+            $vars['{{courier_name}}']    = 'Delhivery';
+            $vars['{{estimated_delivery}}'] = now()->addDays(2)->format('d M Y');
+
+            $this->mailService->sendTemplateEmail(
+                'order_tracking',
+                $order->user?->email,
+                $order->shipping_name,
+                $vars,
+            );
+        } catch (\Exception $e) {
+            report($e);
         }
     }
 

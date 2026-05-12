@@ -4,12 +4,16 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\MailService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 
 class RegisterController extends Controller
 {
+    public function __construct(
+        private readonly MailService $mailService,
+    ) {}
+
     public function showRegistrationForm()
     {
         return view('auth.register');
@@ -31,8 +35,9 @@ class RegisterController extends Controller
             'phone'    => $request->phone,
         ]);
 
-        Auth::login($user);
+        $this->mailService->sendVerificationEmail($user);
 
-        return redirect()->route('home')->with('success', 'Welcome to MediNova Pharma!');
+        return redirect()->route('verification.notice')
+            ->with('success', 'Registration successful! Please check your email to verify your account.');
     }
 }

@@ -9,6 +9,7 @@ use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Mail;
 
 class SmtpSettings extends Page
 {
@@ -32,6 +33,7 @@ class SmtpSettings extends Page
     public string $mail_encryption = 'tls';
     public string $mail_from_address = '';
     public string $mail_from_name = '';
+    public string $test_mail_to   = '';  // field for test email recipient
 
     public function mount(): void
     {
@@ -76,6 +78,21 @@ class SmtpSettings extends Page
                     ->label('From Name')->maxLength(100)
                     ->placeholder('MediNova Pharma'),
             ])->columns(2),
+            Section::make('Test Connection')->description('Send a test email to verify your SMTP settings are working.')
+                ->schema([
+                    Forms\Components\TextInput::make('test_mail_to')
+                        ->label('Send Test Email To')
+                        ->email()
+                        ->placeholder('your@email.com')
+                        ->helperText('Enter your email and click "Send Test" — saves settings first.'),
+                    \Filament\Schemas\Components\Actions::make([
+                        \Filament\Actions\Action::make('sendTest')
+                            ->label('📨 Send Test Email')
+                            ->color('info')
+                            ->action('sendTestMail')
+                            ->icon('heroicon-o-paper-airplane'),
+                    ]),
+                ])->columns(2),
         ]);
     }
 
@@ -85,7 +102,7 @@ class SmtpSettings extends Page
         $content = file_get_contents($envPath);
 
         $pairs = [
-            'MAIL_MAILER'       => $this->mail_mailer,
+            'MAIL_MAILER'       => 'smtp',  // Always smtp — never 'log'
             'MAIL_HOST'         => $this->mail_host,
             'MAIL_PORT'         => $this->mail_port,
             'MAIL_USERNAME'     => $this->mail_username,
@@ -112,5 +129,76 @@ class SmtpSettings extends Page
             ->body('Email configuration updated. Config cache cleared.')
             ->success()
             ->send();
+    }
+
+    public function sendTestMail(): void
+    {
+        $to = $this->test_mail_to ?: $this->mail_from_address;
+
+        if (empty($to)) {
+            Notification::make()->title('Enter a recipient email first')->warning()->send();
+            return;
+        }
+
+        if (empty($this->mail_host) || empty($this->mail_username) || empty($this->mail_password)) {
+            Notification::make()->title('Please fill in all SMTP fields first')->warning()->send();
+            return;
+        }
+
+        // Save first so .env is updated
+        $this->save();
+
+        try {
+            // ── KEY FIX: Purge Laravel's cached mailer transport ──
+            // Without this, Laravel keeps using the old transport even after config() changes
+            \Mail::purge('smtp');
+
+            // Override config at runtime with current form values
+            config([
+                'mail.default'                 => 'smtp',
+                'mail.mailers.smtp.transport'  => 'smtp',
+                'mail.mailers.smtp.host'       => $this->mail_host,
+                'mail.mailers.smtp.port'       => (int) $this->mail_port,
+                'mail.mailers.smtp.username'   => $this->mail_username,
+                'mail.mailers.smtp.password'   => $this->mail_password,
+                'mail.mailers.smtp.encryption' => $this->mail_encryption ?: null,
+                'mail.from.address'            => $this->mail_from_address,
+                'mail.from.name'               => $this->mail_from_name,
+            ]);
+
+            // Build fresh SMTP transport directly (bypasses Laravel's cache completely)
+            $transport = new \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport(
+                host: $this->mail_host,
+                port: (int) $this->mail_port,
+                tls:  strtolower($this->mail_encryption) === 'ssl',
+            );
+            $transport->setUsername($this->mail_username);
+            $transport->setPassword($this->mail_password);
+
+            $mailer = new \Symfony\Component\Mailer\Mailer($transport);
+
+            $email = (new \Symfony\Component\Mime\Email())
+                ->from(new \Symfony\Component\Mime\Address($this->mail_from_address, $this->mail_from_name))
+                ->to($to)
+                ->subject('✅ MediNova SMTP Test — Working!')
+                ->text("✅ MediNova Pharma — SMTP Test Email\n\nYour SMTP settings are working correctly!\n\nHost: {$this->mail_host}\nPort: {$this->mail_port}\nEncryption: {$this->mail_encryption}\nFrom: {$this->mail_from_address}")
+                ->html("<h2>✅ SMTP Test Successful!</h2><p>Your MediNova Pharma email settings are working correctly.</p><ul><li><b>Host:</b> {$this->mail_host}</li><li><b>Port:</b> {$this->mail_port}</li><li><b>Encryption:</b> {$this->mail_encryption}</li><li><b>From:</b> {$this->mail_from_address}</li></ul>");
+
+            $mailer->send($email);
+
+            Notification::make()
+                ->title('✅ Test email sent successfully!')
+                ->body("Check inbox at: {$to}")
+                ->success()
+                ->send();
+
+        } catch (\Exception $e) {
+            Notification::make()
+                ->title('❌ Test email failed')
+                ->body('Error: ' . $e->getMessage())
+                ->danger()
+                ->duration(8000)
+                ->send();
+        }
     }
 }

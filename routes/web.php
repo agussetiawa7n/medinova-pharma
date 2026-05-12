@@ -15,6 +15,7 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\AddressController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\Auth\VerificationController;
 
 // --- Public ---
 Route::get('/', [HomeController::class, 'index'])->name('home');
@@ -34,6 +35,11 @@ Route::post('/login', [LoginController::class, 'login'])->middleware(['guest', '
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 Route::get('/register', [RegisterController::class, 'showRegistrationForm'])->name('register')->middleware('guest');
 Route::post('/register', [RegisterController::class, 'register'])->middleware(['guest', 'throttle:3,60']);
+
+// Email Verification
+Route::get('/email/verify', [VerificationController::class, 'notice'])->name('verification.notice')->middleware('guest');
+Route::get('/email/verify/{user}', [VerificationController::class, 'verify'])->name('verification.verify')->middleware('guest');
+Route::get('/email/verify-resend', [VerificationController::class, 'resend'])->name('verification.resend')->middleware('guest');
 
 // Google OAuth
 Route::get('/auth/google', [\App\Http\Controllers\Auth\GoogleAuthController::class, 'redirect'])

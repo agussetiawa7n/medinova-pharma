@@ -56,5 +56,9 @@ return [
         'api_key' => env('OPENROUTER_API_KEY'),
     ],
 
+    'serpapi' => [
+        'key' => env('SERP_API_KEY', ''),
+    ],
+
 ];
 

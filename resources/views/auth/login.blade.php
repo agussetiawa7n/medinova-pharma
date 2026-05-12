@@ -34,8 +34,14 @@
                 @if($errors->any())
                     <div class="alert alert-danger" style="border-radius:8px;">
                         @foreach($errors->all() as $err)
-                            <div style="font-size:14px;">{{ $err }}</div>
+                            <div style="font-size:14px;">{!! $err !!}</div>
                         @endforeach
+                    </div>
+                @endif
+
+                @if(session('success'))
+                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; color:#16a34a; padding:12px 16px; border-radius:10px; font-size:14px; margin-bottom:20px;">
+                        {{ session('success') }}
                     </div>
                 @endif
 

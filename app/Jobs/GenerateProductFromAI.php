@@ -17,8 +17,9 @@ class GenerateProductFromAI implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
-    public array $backoff = [10, 30, 60];
+    public int $tries = 2;
+    public array $backoff = [30, 60];
+    public int $timeout = 120;
 
     public function __construct(public readonly int $queueItemId) {}
 
@@ -29,38 +30,55 @@ class GenerateProductFromAI implements ShouldQueue, ShouldBeUnique
 
     public function handle(AIProductService $aiService, ImageProcessingService $imageService): void
     {
+        set_time_limit(120);
+
         $item = AIProductQueue::findOrFail($this->queueItemId);
+
+        // Skip if already completed
+        if (in_array($item->status, ['completed', 'saved', 'skipped'])) {
+            return;
+        }
+
         $item->update(['status' => 'generating']);
 
+        // ── STEP 1: Generate TEXT (fast, 2-8s) ──
         try {
             $details = $aiService->generateProductDetails($item->product_name);
-            $rawImage = $aiService->generateImage($item->product_name);
-            $finalImagePath = null;
-
-            if ($rawImage) {
-                $finalImagePath = $imageService->processAndSave($rawImage, $item->product_name);
-            }
 
             $item->update([
-                'generated_data'   => $details,
-                'image_path'       => $finalImagePath,
-                'image_raw_url'    => filter_var($rawImage, FILTER_VALIDATE_URL) ? $rawImage : null,
-                'text_model_used'  => \App\Models\Setting::get('ai.text_model', 'openai/gpt-4o-mini'),
-                'image_model_used' => \App\Models\Setting::get('ai.image_model', 'openai/dall-e-3'),
-                'status'           => 'completed',
-                'error_message'    => null,
+                'generated_data'  => $details,
+                'text_model_used' => \App\Models\Setting::get('ai.text_model', 'openai/gpt-5-mini'),
+                'error_message'   => null,
             ]);
-
         } catch (\Exception $e) {
-            Log::error("AI generation failed for ID {$this->queueItemId}: " . $e->getMessage());
-
+            Log::error("AI text failed for #{$this->queueItemId}: " . $e->getMessage());
             $item->update([
-                'status'        => $this->attempts() >= $this->tries ? 'failed' : 'pending',
-                'error_message' => $e->getMessage(),
-                'retry_count'   => $item->retry_count + 1,
+                'status'        => 'failed',
+                'error_message' => 'Text: ' . $e->getMessage(),
             ]);
-
-            throw $e;
+            return;
         }
+
+        // ── STEP 2: Generate IMAGE (slower, skip if disabled) ──
+        if ((bool) \App\Models\Setting::get('ai.generate_images', 'true')) {
+            try {
+                $rawImage = $aiService->generateImage($item->product_name);
+                if ($rawImage) {
+                    $finalImagePath = $imageService->processAndSave($rawImage, $item->product_name);
+                    $item->update([
+                        'image_path'       => $finalImagePath,
+                        'image_raw_url'    => filter_var($rawImage, FILTER_VALIDATE_URL) ? $rawImage : null,
+                        'image_model_used' => \App\Models\Setting::get('ai.image_model', 'openai/gpt-5-image-mini'),
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::error("AI image failed for #{$this->queueItemId}: " . $e->getMessage());
+                // Don't fail the whole item — text is still good
+                $item->update(['error_message' => 'Image: ' . $e->getMessage()]);
+            }
+        }
+
+        // ── Mark complete ──
+        $item->update(['status' => 'completed']);
     }
 }

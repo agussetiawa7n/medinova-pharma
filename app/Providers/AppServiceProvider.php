@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Order;
 use App\Models\Prescription;
 use App\Services\CartService;
+use App\Services\MailService;
 use App\Services\OrderService;
 use App\Services\Payment\CodGateway;
 use App\Services\Payment\PaymentGatewayManager;
@@ -45,6 +46,7 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(CartService::class),
                 $app->make(PaymentGatewayManager::class),
                 $app->make(PricingService::class),
+                $app->make(MailService::class),
             );
         });
 

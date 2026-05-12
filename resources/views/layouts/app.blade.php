@@ -9,7 +9,12 @@
     <title>@yield('title', 'MediNova Pharma') — MediNova Pharma</title>
     <meta name="description" content="@yield('meta_description', 'Buy medicines, health products & wellness essentials online at MediNova Pharma. 100% genuine, fast delivery.')">
 
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/x-icon" href="{{ asset('assets/glowify/images/favicon/favicon.ico') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ asset('assets/glowify/images/favicon/favicon-16x16.png') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('assets/glowify/images/favicon/favicon-32x32.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('assets/glowify/images/favicon/apple-touch-icon.png') }}">
+    <link rel="manifest" href="{{ asset('assets/glowify/images/favicon/site.webmanifest') }}">
+    <meta name="theme-color" content="#e63946">
 
     {{-- DNS prefetch for asset origins — shaves 50-150ms off first request --}}
     <link rel="dns-prefetch" href="//fonts.googleapis.com">

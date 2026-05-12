@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -19,6 +20,15 @@ class LoginController extends Controller
             'email'    => 'required|email',
             'password' => 'required|string',
         ]);
+
+        // Check if user exists and is verified before attempting login
+        $user = User::where('email', $credentials['email'])->first();
+
+        if ($user && !$user->email_verified_at) {
+            return back()->withErrors([
+                'email' => 'Please verify your email address before logging in. <a href="' . route('verification.resend') . '?email=' . urlencode($user->email) . '" style="color:#e61f7f;text-decoration:underline;">Resend verification email</a>',
+            ])->onlyInput('email');
+        }
 
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
