@@ -34,19 +34,29 @@ class GenerateProductTextJob implements ShouldQueue
         $item->update(['status' => 'generating', 'error_message' => null]);
 
         try {
-            $details = $aiService->generateProductDetails($item->product_name);
+            if ($item->type === 'category') {
+                $details = $aiService->generateCategoryDetails($item->product_name);
 
-            $item->update([
-                'generated_data'  => $details,
-                'text_model_used' => \App\Models\Setting::get('ai.text_model', 'google/gemini-2.0-flash-001'),
-                'status'          => 'text_generated',
-            ]);
-
-            // Dispatch image job
-            if ((bool) \App\Models\Setting::get('ai.generate_images', 'true')) {
-                dispatch(new GenerateProductImageJob($this->queueItemId));
+                $item->update([
+                    'generated_data'  => $details,
+                    'text_model_used' => \App\Models\Setting::get('ai.text_model', 'google/gemini-2.0-flash-001'),
+                    'status'          => 'completed',
+                ]);
             } else {
-                $item->update(['status' => 'completed']);
+                $details = $aiService->generateProductDetails($item->product_name);
+
+                $item->update([
+                    'generated_data'  => $details,
+                    'text_model_used' => \App\Models\Setting::get('ai.text_model', 'google/gemini-2.0-flash-001'),
+                    'status'          => 'text_generated',
+                ]);
+
+                // Dispatch image job
+                if ((bool) \App\Models\Setting::get('ai.generate_images', 'true')) {
+                    dispatch(new GenerateProductImageJob($this->queueItemId));
+                } else {
+                    $item->update(['status' => 'completed']);
+                }
             }
 
         } catch (\Exception $e) {

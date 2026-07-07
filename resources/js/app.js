@@ -121,6 +121,7 @@ Alpine.data('productGrid', () => ({
     page: 1,
     hasMore: true,
     loading: false,
+    total: null,
     init() {
         window.currentFilters = window.currentFilters || {};
         this.load(true);
@@ -150,6 +151,7 @@ Alpine.data('productGrid', () => ({
                 }
                 this.hasMore = data.hasMore;
                 this.page = data.nextPage;
+                this.total = data.total;
                 this.loading = false;
             })
             .catch(() => {

@@ -1,24 +1,29 @@
 @extends('layouts.app')
 
-@section('title', 'Shop All Products — MediNova Pharma')
+@section('title', $activeCategory && $activeCategory->meta_title
+    ? $activeCategory->meta_title
+    : ($activeCategory->name ?? 'Shop All Products'))
+
+@if($activeCategory && $activeCategory->meta_description)
+    @section('meta_description', $activeCategory->meta_description)
+@elseif($activeCategory && $activeCategory->description)
+    @section('meta_description', \Illuminate\Support\Str::limit(strip_tags($activeCategory->description), 155))
+@endif
 
 @section('breadcrumb')
     <ol>
         <li><a href="{{ route('home') }}"><i class="fa-solid fa-house me-1"></i> Home</a></li>
         <li class="sep">/</li>
         <li aria-current="page">Shop</li>
-        @if(!empty($initialFilters['category']))
-            @php $catName = \App\Models\Category::where('slug', $initialFilters['category'])->value('name'); @endphp
-            @if($catName)
-                <li class="sep">/</li>
-                <li aria-current="page">{{ $catName }}</li>
-            @endif
+        @if($activeCategory)
+            <li class="sep">/</li>
+            <li aria-current="page">{{ $activeCategory->name }}</li>
         @endif
     </ol>
 @endsection
 
 @section('content')
-<div class="container-xxl px-3 px-md-4 py-4 py-lg-5">
+<div class="container py-4 py-lg-5">
     <div class="row g-4 g-lg-5">
 
         {{-- ═════════ SIDEBAR FILTERS ═════════ --}}
@@ -131,8 +136,8 @@
             <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
                 <div>
                     <h1 class="mb-1" style="font-weight:800; font-size:clamp(22px, 3vw, 32px); color:#303030;">
-                        @if(!empty($initialFilters['category']))
-                            {{ \App\Models\Category::where('slug', $initialFilters['category'])->value('name') ?? 'Shop' }}
+                        @if($activeCategory)
+                            {{ $activeCategory->name }}
                         @elseif(!empty($initialFilters['search']))
                             Search results for "{{ $initialFilters['search'] }}"
                         @else
@@ -171,9 +176,17 @@
                     <span x-show="loading" x-cloak><i class="fa-solid fa-spinner fa-spin me-1"></i> Loading…</span>
                 </button>
             </div>
-            <div class="text-center text-muted mt-5" x-show="!hasMore && !loading" x-cloak style="font-size:14px;">
+            <div class="text-center text-muted mt-5" x-show="!hasMore && !loading && total > 0" x-cloak style="font-size:14px;">
                 <i class="fa-solid fa-check-circle me-1" style="color:#e61f7f;"></i> You've seen everything
             </div>
+
+            {{-- Category description (below products) --}}
+            @if($activeCategory && $activeCategory->description)
+                <div class="bg-white border rounded-3 p-3 p-md-4 mt-5"
+                     style="line-height:1.8; color:#636363; font-size:14.5px;">
+                    {!! strip_tags($activeCategory->description, '<h1><h2><h3><h4><h5><h6><p><ul><ol><li><a><strong><b><em><i><br><hr><blockquote><span><div><table><thead><tbody><tr><th><td><img><sup><sub><code><pre>') !!}
+                </div>
+            @endif
         </main>
     </div>
 </div>

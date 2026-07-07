@@ -29,13 +29,39 @@
         @endforeach
     </div>
 
+    {{-- ═══ GENERATION TYPE TABS ═══ --}}
+    <div style="display:flex; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:6px; margin-bottom:24px; gap:8px;">
+        <button wire:click="$set('generationType', 'product')" type="button"
+            style="flex:1; padding:10px 16px; font-size:14px; font-weight:700; border:none; border-radius:8px; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:8px;
+            {{ $generationType === 'product' ? 'background:linear-gradient(135deg,#e61f7f,#b81964); color:#fff; box-shadow:0 2px 8px rgba(230,31,127,0.2);' : 'background:transparent; color:#6b7280;' }}">
+            📦 Generate Products
+        </button>
+        <button wire:click="$set('generationType', 'category')" type="button"
+            style="flex:1; padding:10px 16px; font-size:14px; font-weight:700; border:none; border-radius:8px; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:8px;
+            {{ $generationType === 'category' ? 'background:linear-gradient(135deg,#e61f7f,#b81964); color:#fff; box-shadow:0 2px 8px rgba(230,31,127,0.2);' : 'background:transparent; color:#6b7280;' }}">
+            🏷️ Generate Categories (YMYL & EEAT)
+        </button>
+    </div>
+
     {{-- ═══ STEP 1: INPUT ═══ --}}
     @if($currentStep == 1)
     <div style="background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:24px; margin-bottom:24px;">
-        <h3 style="font-size:16px; font-weight:600; color:#1f2937; margin:0 0 4px 0;">Paste product names</h3>
-        <p style="font-size:14px; color:#9ca3af; margin:0 0 16px 0;">One per line, comma-separated, or upload a file below.</p>
+        <h3 style="font-size:16px; font-weight:600; color:#1f2937; margin:0 0 4px 0;">
+            {{ $generationType === 'category' ? 'Paste category names' : 'Paste product names' }}
+        </h3>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+            <p style="font-size:14px; color:#9ca3af; margin:0;">One per line, comma-separated, or upload a file below.</p>
+            @if($generationType === 'category')
+                <button wire:click="loadExistingCategories" type="button"
+                    style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:10px; border:1px solid #e61f7f; background:#fff; color:#e61f7f; font-size:12px; font-weight:700; cursor:pointer; transition:all 0.2s;"
+                    onmouseenter="this.style.background='#fdf2f8'" onmouseleave="this.style.background='#fff'">
+                    📂 Load Existing Categories
+                </button>
+            @endif
+        </div>
 
-        <textarea wire:model="rawProductList" rows="6" placeholder="Paracetamol 500mg&#10;Ibuprofen 400mg&#10;Omeprazole 20mg"
+        <textarea wire:model="rawProductList" rows="6"
+            placeholder="{{ $generationType === 'category' ? 'Diabetes Care&#10;Erectile Dysfunction&#10;Cardiovascular Health' : 'Paracetamol 500mg&#10;Ibuprofen 400mg&#10;Omeprazole 20mg' }}"
             style="width:100%; border:1px solid #e5e7eb; border-radius:12px; background:#f9fafb; padding:12px 16px; font-size:14px; font-family:monospace; resize:none; margin-bottom:16px; box-sizing:border-box;"></textarea>
 
         <div style="display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:16px;">
@@ -91,25 +117,26 @@
             </div>
         </div>
 
-        {{-- Generate All button — stays visible during generation, shows spinner --}}
+        {{-- Generate All button --}}
         <button wire:click="generateAll" type="button"
-            x-data="{ clicked: false }"
-            @click="clicked = true"
-            :disabled="clicked || $wire.isGenerating"
-            :style="(clicked || $wire.isGenerating) ? 'width:100%; display:flex; align-items:center; justify-content:center; gap:8px; padding:14px; border-radius:12px; border:none; font-size:16px; font-weight:700; color:#fff; cursor:not-allowed; background:linear-gradient(135deg,#e61f7f,#b81964,#583fa8); box-shadow:0 8px 24px rgba(230,31,127,0.3); opacity:0.6;' : 'width:100%; display:flex; align-items:center; justify-content:center; gap:8px; padding:14px; border-radius:12px; border:none; font-size:16px; font-weight:700; color:#fff; cursor:pointer; background:linear-gradient(135deg,#e61f7f,#b81964,#583fa8); box-shadow:0 8px 24px rgba(230,31,127,0.3);'">
-            <span x-show="!clicked && !$wire.isGenerating">✨ Generate All {{ count($parsedNames) }} Products</span>
-            <span x-show="clicked || $wire.isGenerating" x-cloak style="display:inline-flex; align-items:center; gap:8px;">
-                <span style="width:16px; height:16px; border:2px solid rgba(255,255,255,0.4); border-top-color:#fff; border-radius:50%; animation:spin 0.8s linear infinite;"></span>
-                Generating {{ $totalCount }} products...
+            wire:loading.attr="disabled"
+            wire:target="generateAll"
+            wire:loading.class="opacity-60 cursor-not-allowed"
+            style="width:100%; display:flex; align-items:center; justify-content:center; gap:8px; padding:14px; border-radius:12px; border:none; font-size:16px; font-weight:700; color:#fff; cursor:pointer; background:linear-gradient(135deg,#e61f7f,#b81964,#583fa8); box-shadow:0 8px 24px rgba(230,31,127,0.3);">
+            <span wire:loading.remove wire:target="generateAll">✨ Generate All {{ count($parsedNames) }} {{ $generationType === 'category' ? 'Categories' : 'Products' }}</span>
+            <span wire:loading wire:target="generateAll" style="display:none; align-items:center; gap:8px;">
+                <span style="width:16px; height:16px; border:2px solid rgba(255,255,255,0.4); border-top-color:#fff; border-radius:50%; animation:spin 0.8s linear infinite; display:inline-block;"></span>
+                Generating {{ count($parsedNames) }} {{ $generationType === 'category' ? 'categories' : 'products' }}...
             </span>
         </button>
+
         @endif
     </div>
     @endif
 
     {{-- ═══ PROGRESS BAR + WORKER CONTROLS (shown during generation) ═══ --}}
     @if($isGenerating)
-    <div wire:poll.2000ms="pollStatus" wire:key="progress-bar" style="margin-bottom:24px;">
+    <div wire:poll.5000ms="pollStatus" wire:key="progress-bar" style="margin-bottom:24px;">
 
         {{-- Worker Status Panel --}}
         <div style="border-radius:12px; overflow:hidden; border:1px solid #e5e7eb; margin-bottom:12px;">
@@ -243,7 +270,9 @@
             @if($done)
             <div style="display:flex; gap:6px;">
                 <button wire:click="regenerateText({{ $item['id'] }})" type="button" style="padding:6px 12px; border-radius:8px; border:1px solid #e5e7eb; background:#fff; color:#6b7280; font-size:12px; cursor:pointer;">🔄 Text</button>
-                <button wire:click="regenerateImage({{ $item['id'] }})" type="button" style="padding:6px 12px; border-radius:8px; border:1px solid #e5e7eb; background:#fff; color:#6b7280; font-size:12px; cursor:pointer;">🖼 Image</button>
+                @if($generationType === 'product')
+                    <button wire:click="regenerateImage({{ $item['id'] }})" type="button" style="padding:6px 12px; border-radius:8px; border:1px solid #e5e7eb; background:#fff; color:#6b7280; font-size:12px; cursor:pointer;">🖼 Image</button>
+                @endif
                 <button wire:click="skipProduct({{ $item['id'] }})" type="button" style="padding:6px 12px; border-radius:8px; border:1px solid #e5e7eb; background:#fff; color:#9ca3af; font-size:12px; cursor:pointer;">Skip</button>
                 <button wire:click="approveProduct({{ $item['id'] }})" type="button" style="padding:6px 16px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; {{ $approved?'background:#22c55e; color:#fff; border:none;':'background:#fff; color:#16a34a; border:2px solid #4ade80;' }}">
                     {{ $approved?'✓ Approved':'Approve' }}
@@ -259,6 +288,32 @@
         @elseif($item['status']==='failed')
         <div style="margin:0 20px 20px; padding:16px; background:#fef2f2; border-radius:12px; font-size:13px; color:#dc2626; word-break:break-word; max-height:120px; overflow:auto;">{{ $item['error_message']??'Unknown error' }}</div>
         @elseif($done)
+        @if($generationType === 'category')
+        <div style="display:flex; gap:16px; padding:20px; border-top:1px solid #f3f4f6;">
+            <div style="flex:1; display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:12px; padding:16px; grid-column:span 2;">
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                        <span style="font-size:12px; font-weight:700; color:#7c3aed; text-transform:uppercase;">Suggested Icon:</span>
+                        <span style="font-family:monospace; font-weight:700; font-size:14px; background:#ddd6fe; color:#5b21b6; padding:2px 8px; border-radius:6px;">
+                            {{ $d['icon'] ?? 'heroicon-o-tag' }}
+                        </span>
+                    </div>
+                    <div style="font-size:11px; font-weight:700; color:#9ca3af; text-transform:uppercase; margin-bottom:6px;">Generated Description (YMYL & EEAT Compliant)</div>
+                    <div class="category-description-preview" style="font-size:14px; color:#374151; max-height:250px; overflow-y:auto; padding:16px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; line-height:1.6; box-shadow:inset 0 1px 2px rgba(0,0,0,0.05);">
+                        {!! $d['description'] ?? '—' !!}
+                    </div>
+                </div>
+                <div style="background:#eef2ff; border:1px solid #c7d2fe; border-radius:12px; padding:16px;">
+                    <div style="font-size:11px; font-weight:700; color:#4f46e5; text-transform:uppercase; margin-bottom:4px;">Meta Title</div>
+                    <div style="font-weight:600; color:#3730a3; font-size:14px;">{{ $d['meta_title'] ?? '—' }}</div>
+                </div>
+                <div style="background:#f0fdfa; border:1px solid #99f6e4; border-radius:12px; padding:16px;">
+                    <div style="font-size:11px; font-weight:700; color:#0d9488; text-transform:uppercase; margin-bottom:4px;">Meta Description</div>
+                    <div style="font-size:13px; color:#115e59; line-height:1.5;">{{ $d['meta_description'] ?? '—' }}</div>
+                </div>
+            </div>
+        </div>
+        @else
         <div style="display:flex; gap:16px; padding:20px; border-top:1px solid #f3f4f6;">
             <div style="width:112px; flex-shrink:0;">
                 @if($item['image_path'])
@@ -313,6 +368,7 @@
         </div>
         @endif
         @endif
+        @endif
     </div>
     @endforeach
     </div>
@@ -337,7 +393,7 @@
             <button wire:click="resetForm" type="button" style="padding:8px 16px; border-radius:12px; border:1px solid #e5e7eb; background:#f9fafb; color:#6b7280; font-size:14px; font-weight:600; cursor:pointer;">↻ New Batch</button>
             <button wire:click="saveApproved" type="button" wire:loading.attr="disabled" wire:target="saveApproved" {{ $approvedCount===0?'disabled':'' }}
                 style="padding:10px 24px; border-radius:12px; border:none; font-size:14px; font-weight:700; color:#fff; cursor:pointer; {{ $approvedCount===0?'opacity:0.4; cursor:not-allowed;':'' }} background:linear-gradient(135deg,#e61f7f,#b81964); box-shadow:0 6px 20px rgba(230,31,127,0.3);">
-                <span wire:loading.remove wire:target="saveApproved">💾 Save {{ $approvedCount }} Products</span>
+                <span wire:loading.remove wire:target="saveApproved">💾 Save {{ $approvedCount }} {{ $generationType === 'category' ? 'Categories' : 'Products' }}</span>
                 <span wire:loading wire:target="saveApproved">Saving...</span>
             </button>
         </div>

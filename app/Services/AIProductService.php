@@ -88,6 +88,77 @@ SYS;
         return $this->parseJson($response->json('choices.0.message.content'));
     }
 
+    public function generateCategoryDetails(string $categoryName): array
+    {
+        set_time_limit(60);
+
+        $model     = \App\Models\Setting::get('ai.text_model', 'openai/gpt-4o');
+        $temp      = (float) (\App\Models\Setting::get('ai.temperature', '0.3'));
+        $maxTokens = (int) (\App\Models\Setting::get('ai.max_tokens', '2000'));
+
+        $systemPrompt = <<<'SYS'
+You are an expert pharmaceutical medical writer and clinical pharmacist.
+You generate highly professional, authoritative, and trustable medical content for pharmacy website categories.
+
+CRITICAL COMPLIANCE RULES — YMYL & EEAT:
+1. YOUR MONEY OR YOUR LIFE (YMYL): Pharmaceutical information directly affects patient health. All content must be medically accurate, evidence-based, objective, and unbiased. Avoid sensationalism or marketing fluff.
+2. EEAT (Experience, Expertise, Authoritativeness, Trustworthiness):
+   - Clear, professional explanation of the category's medical scope (definition, symptoms, or conditions addressed).
+   - Use correct clinical terminology alongside plain-language explanations to keep it accessible yet highly authoritative.
+   - Do NOT give individual medical advice; write at a general educational level.
+   - Include clear guidelines on safety, general precautions, and when to seek immediate medical attention.
+3. Every description MUST include a stylized medical disclaimer warning users to consult a healthcare professional.
+4. Return ONLY valid JSON. No markdown, no backticks, no explanation text.
+SYS;
+
+        $response = Http::connectTimeout(10)->timeout(40)->withHeaders([
+            'Authorization' => 'Bearer ' . $this->apiKey(),
+            'Content-Type'  => 'application/json',
+            'HTTP-Referer'  => config('app.url'),
+            'X-Title'       => 'MediNova Pharma',
+        ])->post(self::BASE_URL . '/chat/completions', [
+            'model'       => $model,
+            'temperature' => $temp,
+            'max_tokens'  => $maxTokens,
+            'plugins'     => [
+                ['id' => 'web'] // Enable OpenRouter web search for live accuracy
+            ],
+            'messages'    => [
+                ['role' => 'system', 'content' => $systemPrompt],
+                ['role' => 'user',   'content' => $this->buildCategoryTextPrompt($categoryName)],
+            ],
+        ]);
+
+        if (!$response->successful()) {
+            throw new \Exception('OpenRouter API error: ' . $response->body());
+        }
+
+        return $this->parseJson($response->json('choices.0.message.content'));
+    }
+
+    private function buildCategoryTextPrompt(string $categoryName): string
+    {
+        return <<<PROMPT
+Generate comprehensive, YMYL-compliant and EEAT-rich content for the medical category: "{$categoryName}"
+
+Ensure the response contains a detailed, structured HTML description:
+1. Overview: Define the medical category, its scope, and clinical significance.
+2. Common Conditions: Outline the main conditions or symptoms managed under this category.
+3. General Safety Guidelines: Explain key precautions, potential contraindications, and typical instructions for this class of treatments.
+4. A prominent, styled medical disclaimer at the bottom or top.
+5. Suggest a modern Heroicon v2 outline icon name (e.g., 'heroicon-o-shield-check', 'heroicon-o-heart', 'heroicon-o-sparkles', 'heroicon-o-beaker', 'heroicon-o-eye', etc.) that visually represents this category.
+
+Return this exact JSON structure:
+{
+"name":"{$categoryName}",
+"description":"<h2>Overview of {$categoryName}</h2><p>...</p><h3>Conditions & Treatment Scope</h3><p>...</p><h3>Important Safety & Precautions</h3><ul><li>...</li></ul><div class=\"medical-disclaimer\" style=\"margin-top:20px; padding:15px; border-left:4px solid #ef4444; background-color:#fef2f2; color:#b91c1c; font-size:13px; border-radius:4px;\"><strong>Medical Disclaimer:</strong> The content provided here is for informational and educational purposes only and does not constitute medical advice. Consult a qualified healthcare professional before starting any treatment.</div>",
+"icon":"heroicon-o-icon-name",
+"meta_title":"Buy {$categoryName} Online | Medinova Pharma",
+"meta_description":"Explore medically reviewed treatments for {$categoryName} at Medinova Pharma. Safe, authentic, and fast shipping."
+}
+PROMPT;
+    }
+
     private function buildTextPrompt(string $productName): string
     {
         $categories = Category::pluck('name')->implode(', ');

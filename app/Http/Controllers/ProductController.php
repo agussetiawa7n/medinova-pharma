@@ -18,7 +18,14 @@ class ProductController extends Controller
 
         $initialFilters = $request->only(['q', 'search', 'category', 'brand', 'minPrice', 'maxPrice', 'sort', 'in_stock', 'on_sale']);
 
-        return view('products.index', compact('categories', 'brands', 'initialFilters'));
+        $activeCategory = null;
+        if (!empty($initialFilters['category'])) {
+            $activeCategory = Category::where('slug', $initialFilters['category'])
+                ->where('is_active', true)
+                ->first();
+        }
+
+        return view('products.index', compact('categories', 'brands', 'initialFilters', 'activeCategory'));
     }
 
     public function show(string $slug)

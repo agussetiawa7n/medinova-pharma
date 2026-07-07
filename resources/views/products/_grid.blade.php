@@ -3,7 +3,7 @@
         @include('products._card', compact('product'))
     </div>
 @empty
-    <div class="col-12 text-center py-5">
+    <div class="col-12 text-center py-5" style="flex:0 0 100%; max-width:100%; width:100%;">
         <div style="width:96px; height:96px; border-radius:50%; background:#F8FAFB; display:flex; align-items:center; justify-content:center; margin:0 auto 20px; color:#9CA3AF; font-size:36px;">
             <i class="fa-regular fa-face-frown"></i>
         </div>

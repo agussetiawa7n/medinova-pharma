@@ -26,6 +26,8 @@ class AIGenerateProducts extends Page
 
     protected string $view = 'filament.pages.ai-generate-products';
 
+    public string $generationType = 'product'; // 'product' or 'category'
+
     public string $rawProductList = '';
     public $csvFile   = null;
     public $txtFile   = null;
@@ -46,11 +48,52 @@ class AIGenerateProducts extends Page
     public string $elapsedTime = '';
     public string $textModel = '';
     public string $imageModel = '';
+    public bool $processingImage = false; // Lock to prevent concurrent image processing
 
     public function mount(): void
     {
         // Restore state after page refresh — load queue items from DB
         $existing = AIProductQueue::whereNull('approved_by')
+            ->whereIn('status', ['pending', 'generating', 'text_generated', 'completed', 'failed'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        if ($existing->isNotEmpty()) {
+            // Restore correct type based on active items
+            $this->generationType = $existing->first()->type ?? 'product';
+            
+            $filtered = $existing->where('type', $this->generationType);
+            if ($filtered->isNotEmpty()) {
+                $this->parsedNames = $filtered->pluck('product_name')->unique()->values()->toArray();
+                $this->currentStep = 2;
+                $this->totalCount  = count($this->parsedNames);
+                $this->refreshQueueItems();
+
+                $hasActive = $filtered->whereIn('status', ['pending', 'generating', 'text_generated'])->isNotEmpty();
+                $hasFullyDone = $filtered->whereIn('status', ['completed', 'failed', 'skipped', 'saved'])->count();
+                if ($hasActive && $hasFullyDone < $this->totalCount) {
+                    $this->isGenerating = true;
+                }
+                $this->completedCount = $hasFullyDone;
+            }
+        }
+    }
+
+    public function updatedGenerationType($value): void
+    {
+        $this->parsedNames = [];
+        $this->queueItems = [];
+        $this->rawProductList = '';
+        $this->csvFile = null;
+        $this->txtFile = null;
+        $this->excelFile = null;
+        $this->totalCount = 0;
+        $this->completedCount = 0;
+        $this->isGenerating = false;
+        $this->currentStep = 1;
+
+        $existing = AIProductQueue::whereNull('approved_by')
+            ->where('type', $value)
             ->whereIn('status', ['pending', 'generating', 'text_generated', 'completed', 'failed'])
             ->orderBy('created_at', 'desc')
             ->get();
@@ -68,6 +111,18 @@ class AIGenerateProducts extends Page
             }
             $this->completedCount = $hasFullyDone;
         }
+    }
+
+    public function loadExistingCategories(): void
+    {
+        $categoryNames = Category::pluck('name')->toArray();
+        if (empty($categoryNames)) {
+            Notification::make()->title('No existing categories found.')->warning()->send();
+            return;
+        }
+
+        $this->rawProductList = implode("\n", $categoryNames);
+        Notification::make()->title(count($categoryNames) . ' categories loaded.')->success()->send();
     }
 
     public function parseInput(): void
@@ -131,35 +186,101 @@ class AIGenerateProducts extends Page
             return;
         }
 
-        // Clean old non-approved items for these names
+        // Clean old non-approved items for these names of the current type
         AIProductQueue::whereIn('product_name', $this->parsedNames)
+            ->where('type', $this->generationType)
             ->whereNull('approved_by')
             ->delete();
 
         // Create all queue items as 'pending'
+        $items = [];
         foreach ($this->parsedNames as $name) {
-            AIProductQueue::create(['product_name' => $name, 'status' => 'pending']);
+            $items[] = AIProductQueue::create([
+                'product_name' => $name,
+                'type'         => $this->generationType,
+                'status'       => 'pending'
+            ]);
         }
 
         $this->isGenerating   = true;
         $this->totalCount     = count($this->parsedNames);
         $this->completedCount = 0;
         $this->workerStatus   = 'running';
-        $this->refreshQueueItems();
+        $this->currentStep    = 2;
 
-        Notification::make()
-            ->title("{$this->totalCount} products queued.")
-            ->body('Click \'▶ Start Worker\' or wait — processing will begin via cron.')
-            ->info()
-            ->send();
+        // ── Immediately process TEXT generation for all products ──
+        // Text is fast (~5-10s each). Images are dispatched to queue for cron.
+        set_time_limit(600);
+        ini_set('max_execution_time', 600);
+
+        foreach ($items as $item) {
+            try {
+                $this->currentTask = "📝 Generating: {$item->product_name}";
+                dispatch_sync(new GenerateProductTextJob($item->id));
+            } catch (\Exception $e) {
+                Log::error("generateAll text failed [{$item->product_name}]: " . $e->getMessage());
+            }
+        }
+
+        $this->currentTask = '';
+        $this->refreshQueueItems();
+        $this->completedCount = collect($this->queueItems)
+            ->whereIn('status', ['completed', 'failed', 'skipped'])->count();
+
+        // Check if any images still pending (will be processed by cron)
+        $imagePending = collect($this->queueItems)->where('status', 'text_generated')->count();
+
+        if ($imagePending > 0) {
+            $this->workerStatus = 'running';
+            Notification::make()
+                ->title('✅ Text done! Images generating...')
+                ->body("Text generated for all {$this->totalCount} items. Images are being generated (auto-updates every 2s).")
+                ->success()
+                ->send();
+        } else {
+            $this->workerStatus = 'idle';
+            Notification::make()
+                ->title('✅ All items ready!')
+                ->body('Review the results below and approve them to save.')
+                ->success()
+                ->send();
+        }
     }
 
     public function pollStatus(): void
     {
-        // ONLY read DB — never call APIs here (prevents 504 timeouts)
+        // Refresh DB state
         $this->refreshQueueItems();
         $this->completedCount = collect($this->queueItems)
             ->whereIn('status', ['completed', 'failed', 'skipped'])->count();
+
+        // ── Auto-process ONE image job per poll (3s interval) ──
+        // This handles images automatically after text is done, no extra clicks needed.
+        // Lock prevents concurrent execution if image takes longer than poll interval.
+        if ($this->isGenerating && !$this->processingImage) {
+            $imageItem = AIProductQueue::where('status', 'text_generated')
+                ->where('type', 'product') // only products have images
+                ->whereIn('product_name', $this->parsedNames)
+                ->orderBy('updated_at')
+                ->first();
+
+            if ($imageItem) {
+                try {
+                    $this->processingImage = true;
+                    set_time_limit(360);
+                    $this->currentTask = "🖼️ Image: {$imageItem->product_name}";
+                    $this->workerStatus = 'running';
+                    dispatch_sync(new GenerateProductImageJob($imageItem->id));
+                    $this->refreshQueueItems();
+                    $this->completedCount = collect($this->queueItems)
+                        ->whereIn('status', ['completed', 'failed', 'skipped'])->count();
+                } catch (\Exception $e) {
+                    Log::error("pollStatus image failed [{$imageItem->product_name}]: " . $e->getMessage());
+                } finally {
+                    $this->processingImage = false;
+                }
+            }
+        }
 
         // Detect current task
         $this->detectCurrentTask();
@@ -247,10 +368,12 @@ class AIGenerateProducts extends Page
      */
     public function processNow(): void
     {
-        $pending = AIProductQueue::whereIn('status', ['pending', 'text_generated'])->count();
+        $pending = AIProductQueue::whereIn('status', ['pending', 'text_generated'])
+            ->where('type', $this->generationType)
+            ->count();
 
         if ($pending === 0) {
-            Notification::make()->title('No pending jobs')->body('All products are already processed.')->info()->send();
+            Notification::make()->title('No pending jobs')->body('All items are already processed.')->info()->send();
             return;
         }
 
@@ -265,8 +388,9 @@ class AIGenerateProducts extends Page
             $batchSize = 3;
             $processed = 0;
 
-            // Step 1: Process pending → text_generated
+            // Step 1: Process pending → text_generated / completed
             $textItems = AIProductQueue::where('status', 'pending')
+                ->where('type', $this->generationType)
                 ->orderBy('created_at')
                 ->take($batchSize)
                 ->get();
@@ -277,16 +401,19 @@ class AIGenerateProducts extends Page
                 $processed++;
             }
 
-            // Step 2: Process text_generated → completed (image)
-            $imageItems = AIProductQueue::where('status', 'text_generated')
-                ->orderBy('updated_at')
-                ->take($batchSize - $processed)
-                ->get();
+            // Step 2: Process text_generated → completed (image, only for products)
+            if ($this->generationType === 'product') {
+                $imageItems = AIProductQueue::where('status', 'text_generated')
+                    ->where('type', 'product')
+                    ->orderBy('updated_at')
+                    ->take($batchSize - $processed)
+                    ->get();
 
-            foreach ($imageItems as $item) {
-                $this->currentTask = "🖼️ Generating image for \"{$item->product_name}\"";
-                dispatch_sync(new GenerateProductImageJob($item->id));
-                $processed++;
+                foreach ($imageItems as $item) {
+                    $this->currentTask = "🖼️ Generating image for \"{$item->product_name}\"";
+                    dispatch_sync(new GenerateProductImageJob($item->id));
+                    $processed++;
+                }
             }
 
             $this->currentTask = '';
@@ -294,7 +421,9 @@ class AIGenerateProducts extends Page
             $this->completedCount = collect($this->queueItems)
                 ->whereIn('status', ['completed', 'failed', 'skipped'])->count();
 
-            $stillPending = AIProductQueue::whereIn('status', ['pending', 'text_generated'])->count();
+            $stillPending = AIProductQueue::whereIn('status', ['pending', 'text_generated'])
+                ->where('type', $this->generationType)
+                ->count();
 
             if ($stillPending > 0) {
                 $this->workerStatus = 'stopped'; // Needs another click
@@ -363,8 +492,9 @@ class AIGenerateProducts extends Page
 
     private function refreshQueueItems(): void
     {
-        $this->queueItems = AIProductQueue::whereIn('product_name', $this->parsedNames)
-            ->select('id', 'product_name', 'status', 'generated_data', 'image_path', 'error_message', 'approved_by', 'approved_at', 'updated_at', 'text_model_used', 'image_model_used')
+        $this->queueItems = AIProductQueue::where('type', $this->generationType)
+            ->whereIn('product_name', $this->parsedNames)
+            ->select('id', 'type', 'product_name', 'status', 'generated_data', 'image_path', 'error_message', 'approved_by', 'approved_at', 'updated_at', 'text_model_used', 'image_model_used')
             ->orderByRaw("FIELD(status, 'generating', 'pending', 'text_generated', 'completed', 'failed', 'skipped', 'saved')")
             ->get()
             ->toArray();
@@ -414,16 +544,48 @@ class AIGenerateProducts extends Page
     public function saveApproved(): void
     {
         $approved = AIProductQueue::whereIn('status', ['completed', 'text_generated'])
+                                   ->where('type', $this->generationType)
                                    ->whereNotNull('approved_by')
                                    ->get();
 
         if ($approved->isEmpty()) {
-            Notification::make()->title('No approved products to save.')->warning()->send();
+            Notification::make()->title('No approved items to save.')->warning()->send();
             return;
         }
 
         $saved = 0;
         $skipped = 0;
+
+        if ($this->generationType === 'category') {
+            foreach ($approved as $item) {
+                $d = $item->generated_data ?? [];
+                $categoryName = $d['name'] ?? $item->product_name;
+                $slug = Str::slug($categoryName);
+
+                // Update or create Category details
+                Category::updateOrCreate(
+                    ['slug' => $slug],
+                    [
+                        'name'             => $categoryName,
+                        'description'      => $d['description'] ?? '',
+                        'icon'             => $d['icon'] ?? 'heroicon-o-tag',
+                        'meta_title'       => $d['meta_title'] ?? '',
+                        'meta_description' => $d['meta_description'] ?? '',
+                        'is_active'        => true,
+                        'show_in_menu'     => true,
+                    ]
+                );
+
+                $item->update(['status' => 'saved']);
+                $saved++;
+            }
+
+            $msg = "{$saved} categories saved/updated.";
+            Notification::make()->title($msg)->success()->send();
+            $this->resetForm();
+            return;
+        }
+
         foreach ($approved as $item) {
             $d = $item->generated_data ?? [];
             $productName = $d['name'] ?? $item->product_name;

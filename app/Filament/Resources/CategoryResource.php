@@ -34,7 +34,7 @@ class CategoryResource extends Resource
                     ->options(Category::whereNull('parent_id')->pluck('name', 'id'))
                     ->searchable()->nullable(),
                 Forms\Components\TextInput::make('icon')->placeholder('heroicon-o-tag'),
-                Forms\Components\Textarea::make('description')->columnSpanFull(),
+                Forms\Components\RichEditor::make('description')->columnSpanFull(),
                 Forms\Components\FileUpload::make('image')->image()->directory('categories')->disk('public'),
                 Forms\Components\TextInput::make('sort_order')->numeric()->default(0),
             ]),
