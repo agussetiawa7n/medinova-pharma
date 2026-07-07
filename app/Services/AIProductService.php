@@ -10,12 +10,12 @@ use Illuminate\Support\Str;
 
 class AIProductService
 {
-    // OpenRouter unified API — one key, 200+ models
-    private const BASE_URL = 'https://openrouter.ai/api/v1';
+    // DeepSeek API
+    private const BASE_URL = 'https://api.deepseek.com';
 
     private function apiKey(): string
     {
-        return \App\Models\Setting::get('ai.openrouter_api_key', config('services.openrouter.api_key', ''));
+        return \App\Models\Setting::get('ai.deepseek_api_key', config('services.deepseek.api_key', ''));
     }
 
     // ── LIGHTWEIGHT PING ──
@@ -26,7 +26,7 @@ class AIProductService
             'Authorization' => 'Bearer ' . $this->apiKey(),
             'Content-Type'  => 'application/json',
         ])->post(self::BASE_URL . '/chat/completions', [
-            'model'       => \App\Models\Setting::get('ai.text_model', 'openai/gpt-4o'),
+            'model'       => \App\Models\Setting::get('ai.text_model', 'deepseek-v4-pro'),
             'max_tokens'  => 5,
             'messages'    => [
                 ['role' => 'user', 'content' => 'Say OK'],
@@ -46,7 +46,7 @@ class AIProductService
     {
         set_time_limit(60);
 
-        $model     = \App\Models\Setting::get('ai.text_model', 'openai/gpt-4o');
+        $model     = \App\Models\Setting::get('ai.text_model', 'deepseek-v4-pro');
         $temp      = (float) (\App\Models\Setting::get('ai.temperature', '0.3'));
         $maxTokens = (int) (\App\Models\Setting::get('ai.max_tokens', '2000'));
 
@@ -66,15 +66,10 @@ SYS;
         $response = Http::connectTimeout(10)->timeout(40)->withHeaders([
             'Authorization' => 'Bearer ' . $this->apiKey(),
             'Content-Type'  => 'application/json',
-            'HTTP-Referer'  => config('app.url'),
-            'X-Title'       => 'MediNova Pharma',
         ])->post(self::BASE_URL . '/chat/completions', [
             'model'       => $model,
             'temperature' => $temp,
             'max_tokens'  => $maxTokens,
-            'plugins'     => [
-                ['id' => 'web'] // Enable OpenRouter web search for live accuracy
-            ],
             'messages'    => [
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user',   'content' => $this->buildTextPrompt($productName)],
@@ -82,7 +77,7 @@ SYS;
         ]);
 
         if (!$response->successful()) {
-            throw new \Exception('OpenRouter API error: ' . $response->body());
+            throw new \Exception('DeepSeek API error: ' . $response->body());
         }
 
         return $this->parseJson($response->json('choices.0.message.content'));
@@ -92,7 +87,7 @@ SYS;
     {
         set_time_limit(60);
 
-        $model     = \App\Models\Setting::get('ai.text_model', 'openai/gpt-4o');
+        $model     = \App\Models\Setting::get('ai.text_model', 'deepseek-v4-pro');
         $temp      = (float) (\App\Models\Setting::get('ai.temperature', '0.3'));
         $maxTokens = (int) (\App\Models\Setting::get('ai.max_tokens', '2000'));
 
@@ -114,15 +109,10 @@ SYS;
         $response = Http::connectTimeout(10)->timeout(40)->withHeaders([
             'Authorization' => 'Bearer ' . $this->apiKey(),
             'Content-Type'  => 'application/json',
-            'HTTP-Referer'  => config('app.url'),
-            'X-Title'       => 'MediNova Pharma',
         ])->post(self::BASE_URL . '/chat/completions', [
             'model'       => $model,
             'temperature' => $temp,
             'max_tokens'  => $maxTokens,
-            'plugins'     => [
-                ['id' => 'web'] // Enable OpenRouter web search for live accuracy
-            ],
             'messages'    => [
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user',   'content' => $this->buildCategoryTextPrompt($categoryName)],
@@ -130,7 +120,7 @@ SYS;
         ]);
 
         if (!$response->successful()) {
-            throw new \Exception('OpenRouter API error: ' . $response->body());
+            throw new \Exception('DeepSeek API error: ' . $response->body());
         }
 
         return $this->parseJson($response->json('choices.0.message.content'));

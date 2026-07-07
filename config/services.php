@@ -52,8 +52,12 @@ return [
         'redirect'      => env('GOOGLE_REDIRECT_URI', '/auth/google/callback'),
     ],
 
-    'openrouter' => [
-        'api_key' => env('OPENROUTER_API_KEY'),
+    'deepseek' => [
+        'api_key' => env('DEEPSEEK_API_KEY'),
+    ],
+
+    'fal' => [
+        'api_key' => env('FAL_API_KEY'),
     ],
 
     'serpapi' => [

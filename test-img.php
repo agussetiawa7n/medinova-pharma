@@ -4,13 +4,14 @@ $app = require_once 'bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 $kernel->bootstrap();
 
-$key = App\Models\Setting::get('ai.openrouter_api_key', config('services.openrouter.api_key'));
-$response = Illuminate\Support\Facades\Http::withHeaders([
-    'Authorization' => 'Bearer ' . $key,
+$key = App\Models\Setting::get('ai.fal_api_key', config('services.fal.api_key'));
+$response = Illuminate\Support\Facades\Http::connectTimeout(15)->timeout(120)->withHeaders([
+    'Authorization' => 'Key ' . $key,
     'Content-Type'  => 'application/json'
-])->post('https://openrouter.ai/api/v1/chat/completions', [
-    'model' => 'openai/gpt-5-image-mini', // What happens here?
-    'messages' => [['role' => 'user', 'content' => 'Draw a box.']]
+])->post('https://fal.run/fal-ai/gpt-image-1-mini', [
+    'prompt' => 'Draw a small white pharmaceutical box labeled Accufine.',
+    'image_size' => '1024x1024',
+    'quality' => 'high'
 ]);
 
 echo "Status: " . $response->status() . "\n";

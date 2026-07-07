@@ -25,9 +25,10 @@ class AISettings extends Page
 
     public array $data = [];
 
-    public string $openrouter_api_key = '';
-    public string $text_model         = 'openai/gpt-4o';
-    public string $image_model        = 'openai/gpt-5-image';
+    public string $deepseek_api_key   = '';
+    public string $fal_api_key        = '';
+    public string $text_model         = 'deepseek-v4-pro';
+    public string $image_model        = 'gpt-image-1-mini';
     public string $serpapi_key        = '';
     public bool   $enable_image_search = true;
     public float  $ai_temperature     = 0.3;
@@ -51,9 +52,10 @@ class AISettings extends Page
 
     public function mount(): void
     {
-        $this->openrouter_api_key  = Setting::get('ai.openrouter_api_key', config('services.openrouter.api_key', '')) ?: '';
-        $this->text_model          = Setting::get('ai.text_model', 'openai/gpt-4o') ?: 'openai/gpt-4o';
-        $this->image_model         = Setting::get('ai.image_model', 'openai/gpt-5-image') ?: 'openai/gpt-5-image';
+        $this->deepseek_api_key    = Setting::get('ai.deepseek_api_key', config('services.deepseek.api_key', '')) ?: '';
+        $this->fal_api_key         = Setting::get('ai.fal_api_key', config('services.fal.api_key', '')) ?: '';
+        $this->text_model          = Setting::get('ai.text_model', 'deepseek-v4-pro') ?: 'deepseek-v4-pro';
+        $this->image_model         = Setting::get('ai.image_model', 'gpt-image-1-mini') ?: 'gpt-image-1-mini';
         $this->serpapi_key         = Setting::get('ai.serpapi_key', config('services.serpapi.key', '')) ?: '';
         $this->enable_image_search = Setting::get('ai.enable_image_search', '1') === '1';
         $this->ai_temperature      = (float) (Setting::get('ai.temperature', '0.7') ?: 0.7);
@@ -68,10 +70,10 @@ class AISettings extends Page
     public function form(Schema $schema): Schema
     {
         return $schema->schema([
-            Section::make('OpenRouter API')->description('One API key → 200+ AI models. Get yours at openrouter.ai/keys')
+            Section::make('DeepSeek API')->description('Flagship reasoning & text models. Get yours at platform.deepseek.com')
                 ->schema([
-                    Forms\Components\TextInput::make('openrouter_api_key')->label('API Key')
-                        ->password()->placeholder('sk-or-v1-...')->required()
+                    Forms\Components\TextInput::make('deepseek_api_key')->label('API Key')
+                        ->password()->placeholder('sk-...')->required()
                         ->helperText('Stored securely. Not visible after save.'),
                     \Filament\Schemas\Components\Actions::make([
                         \Filament\Actions\Action::make('test')
@@ -79,6 +81,12 @@ class AISettings extends Page
                             ->action('testConnection')
                             ->icon('heroicon-o-signal'),
                     ]),
+                ]),
+            Section::make('Fal.ai API')->description('High-performance generative media platform. Get yours at fal.ai')
+                ->schema([
+                    Forms\Components\TextInput::make('fal_api_key')->label('API Key')
+                        ->password()->placeholder('Key ...')->required()
+                        ->helperText('Stored securely. Not visible after save.'),
                 ]),
             Section::make('Image Search (SerpAPI)')
                 ->description('Search real pharma product images as reference for AI editing. Change API key anytime.')
@@ -93,16 +101,13 @@ class AISettings extends Page
             Section::make('Model Selection')->schema([
                 Forms\Components\Select::make('text_model')->label('Text AI (product details)')
                     ->options([
-                        'openai/gpt-4o'               => 'GPT-4o — Most Accurate ✅',
-                        'openai/gpt-4o-mini'          => 'GPT-4o Mini — Fast & Reliable',
-                        'google/gemini-2.0-flash-001' => 'Gemini 2.0 Flash — Fastest ⚡',
-                        'openai/gpt-5-mini'           => 'GPT-5 Mini — Powerful',
-                    ])->default('openai/gpt-4o')->required(),
+                        'deepseek-v4-pro'   => 'DeepSeek V4 Pro — Flagship MoE ✅',
+                        'deepseek-v4-flash' => 'DeepSeek V4 Flash — High Speed',
+                    ])->default('deepseek-v4-pro')->required(),
                 Forms\Components\Select::make('image_model')->label('Image AI')
                     ->options([
-                        'openai/gpt-5-image'      => 'GPT-5 Image — Best Realism',
-                        'openai/gpt-5-image-mini' => 'GPT-5 Image Mini — Recommended',
-                    ])->default('openai/gpt-5-image')->required(),
+                        'gpt-image-1-mini' => 'GPT Image 1 Mini — Cost-effective & Fast ✅',
+                    ])->default('gpt-image-1-mini')->required(),
                 Forms\Components\Toggle::make('generate_images')->label('Generate Images')->default(true),
             ])->columns(2),
             Section::make('Parameters')->schema([
@@ -134,7 +139,8 @@ class AISettings extends Page
 
     public function save(): void
     {
-        Setting::set('ai.openrouter_api_key', $this->openrouter_api_key, 'ai');
+        Setting::set('ai.deepseek_api_key', $this->deepseek_api_key, 'ai');
+        Setting::set('ai.fal_api_key', $this->fal_api_key, 'ai');
         Setting::set('ai.text_model', $this->text_model, 'ai');
         Setting::set('ai.image_model', $this->image_model, 'ai');
         if (!empty($this->serpapi_key)) {
@@ -155,7 +161,7 @@ class AISettings extends Page
     {
         try {
             app(AIProductService::class)->ping();
-            Notification::make()->title('Connected!')->body('OpenRouter is working.')->success()->send();
+            Notification::make()->title('Connected!')->body('DeepSeek API is working.')->success()->send();
         } catch (\Exception $e) {
             Notification::make()->title('Failed')->body($e->getMessage())->danger()->send();
         }

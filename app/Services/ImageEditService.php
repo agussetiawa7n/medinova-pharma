@@ -10,21 +10,21 @@ use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 
 class ImageEditService
 {
-    private const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
+    private const FAL_BASE = 'https://fal.run';
 
     private function apiKey(): string
     {
-        return \App\Models\Setting::get('ai.openrouter_api_key', config('services.openrouter.api_key', ''));
+        return \App\Models\Setting::get('ai.fal_api_key', config('services.fal.api_key', ''));
     }
 
     private function imageModel(): string
     {
-        return \App\Models\Setting::get('ai.image_model', 'openai/gpt-5-image');
+        return \App\Models\Setting::get('ai.image_model', 'gpt-image-1-mini');
     }
 
     /**
      * MAIN ENTRY POINT
-     * Takes a reference image path, preprocesses it, sends to GPT-5 for editing.
+     * Takes a reference image path, preprocesses it, sends to Fal.ai for editing.
      * Returns path to raw output PNG, or null on failure.
      */
     public function editWithReference(string $refPath, string $productName, string $slug): ?string
@@ -38,14 +38,8 @@ class ImageEditService
             $processedPath = $refPath;
         }
 
-        // Step 2: Try /images/edits endpoint first (best quality)
+        // Step 2: Try Fal.ai image-to-image editing endpoint
         $result = $this->tryEditEndpoint($processedPath, $productName, $slug, $tempDir);
-
-        // Step 3: Fallback — /chat/completions with base64 reference image
-        if (!$result) {
-            Log::info("ImageEdit: /images/edits failed, falling back to multimodal for [{$productName}]");
-            $result = $this->tryMultimodalEndpoint($processedPath, $productName, $slug, $tempDir);
-        }
 
         // Cleanup preprocessed temp
         if ($processedPath !== $refPath && file_exists($processedPath)) {
@@ -65,26 +59,38 @@ class ImageEditService
         $model   = $this->imageModel();
         $prompt  = $this->buildLockedGenerationPrompt($productName);
 
-        Log::info("ImageEdit: Pure locked-prompt generation for [{$productName}]");
+        Log::info("ImageEdit: Pure locked-prompt generation for [{$productName}] via Fal.ai using {$model}");
 
         try {
             $response = Http::connectTimeout(15)
                 ->timeout(180)
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . $this->apiKey(),
+                    'Authorization' => 'Key ' . $this->apiKey(),
                     'Content-Type'  => 'application/json',
-                    'HTTP-Referer'  => config('app.url'),
-                    'X-Title'       => 'MediNova Pharma',
                 ])
-                ->post(self::OPENROUTER_BASE . '/chat/completions', [
-                    'model'      => $model,
-                    'modalities' => ['image', 'text'],
-                    'messages'   => [
-                        ['role' => 'user', 'content' => $prompt],
-                    ],
+                ->post(self::FAL_BASE . '/fal-ai/' . $model, [
+                    'prompt'        => $prompt,
+                    'image_size'    => '1024x1024',
+                    'quality'       => 'high',
                 ]);
 
-            return $this->extractImageFromResponse($response, $slug, $tempDir);
+            if (!$response->successful()) {
+                Log::warning("ImageEdit: Pure generation HTTP {$response->status()}: " . substr($response->body(), 0, 300));
+                return null;
+            }
+
+            $url = $response->json('images.0.url');
+            if (!$url) {
+                Log::warning("ImageEdit: Pure generation returned no image URL");
+                return null;
+            }
+
+            $rawPath = "{$tempDir}/{$slug}_raw.png";
+            $imgContent = Http::timeout(30)->get($url)->body();
+            file_put_contents($rawPath, $imgContent);
+
+            Log::info("ImageEdit: Pure generation SUCCESS for [{$productName}]");
+            return $rawPath;
 
         } catch (\Exception $e) {
             Log::error("ImageEdit: Pure generation failed for [{$productName}]: " . $e->getMessage());
@@ -123,170 +129,53 @@ class ImageEditService
     }
 
     /**
-     * Try OpenAI /images/edits multipart endpoint.
-     * This is the BEST approach — preserves original packaging.
+     * Try Fal.ai image-to-image editing endpoint.
      */
     private function tryEditEndpoint(string $processedPath, string $productName, string $slug, string $tempDir): ?string
     {
         try {
             $model  = $this->imageModel();
             $prompt = $this->buildEditPrompt($productName);
+            $base64 = base64_encode(file_get_contents($processedPath));
+            $dataUri = 'data:image/jpeg;base64,' . $base64;
 
-            Log::info("ImageEdit: Trying /images/edits for [{$productName}]", ['model' => $model]);
+            Log::info("ImageEdit: Trying fal.ai edit endpoint for [{$productName}] using {$model}/edit");
 
             $response = Http::connectTimeout(15)
                 ->timeout(200)
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . $this->apiKey(),
-                    'HTTP-Referer'  => config('app.url'),
-                    'X-Title'       => 'MediNova Pharma',
+                    'Authorization' => 'Key ' . $this->apiKey(),
+                    'Content-Type'  => 'application/json',
                 ])
-                ->asMultipart()
-                ->attach('image[]', file_get_contents($processedPath), basename($processedPath), ['Content-Type' => 'image/jpeg'])
-                ->attach('prompt', $prompt)
-                ->attach('model', $model)
-                ->attach('n', '1')
-                ->attach('size', '1024x1024')
-                ->post(self::OPENROUTER_BASE . '/images/edits');
+                ->post(self::FAL_BASE . '/fal-ai/' . $model . '/edit', [
+                    'prompt'     => $prompt,
+                    'image_urls' => [$dataUri],
+                    'image_size' => '1024x1024',
+                    'quality'    => 'high',
+                ]);
 
             if (!$response->successful()) {
-                Log::warning("ImageEdit: /images/edits HTTP {$response->status()}: " . substr($response->body(), 0, 300));
+                Log::warning("ImageEdit: Fal.ai edit HTTP {$response->status()}: " . substr($response->body(), 0, 300));
                 return null;
             }
 
-            // OpenAI /images/edits returns: data[0].b64_json or data[0].url
-            $data = $response->json('data.0');
-            if (!$data) {
-                Log::warning("ImageEdit: /images/edits empty data response");
+            $url = $response->json('images.0.url');
+            if (!$url) {
+                Log::warning("ImageEdit: Fal.ai edit returned no image URL");
                 return null;
             }
 
             $rawPath = "{$tempDir}/{$slug}_raw.png";
+            $imgContent = Http::timeout(30)->get($url)->body();
+            file_put_contents($rawPath, $imgContent);
 
-            if (!empty($data['b64_json'])) {
-                $decoded = base64_decode($data['b64_json']);
-                file_put_contents($rawPath, $decoded);
-                Log::info("ImageEdit: /images/edits SUCCESS (b64) for [{$productName}]", ['size' => strlen($decoded)]);
-                return $rawPath;
-            }
-
-            if (!empty($data['url'])) {
-                $imgContent = Http::timeout(30)->get($data['url'])->body();
-                file_put_contents($rawPath, $imgContent);
-                Log::info("ImageEdit: /images/edits SUCCESS (url) for [{$productName}]");
-                return $rawPath;
-            }
-
-            Log::warning("ImageEdit: /images/edits returned no image data");
-            return null;
-
-        } catch (\Exception $e) {
-            Log::warning("ImageEdit: /images/edits exception: " . $e->getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Fallback: /chat/completions with reference image embedded as base64.
-     * Less precise than edit endpoint but widely supported.
-     */
-    private function tryMultimodalEndpoint(string $processedPath, string $productName, string $slug, string $tempDir): ?string
-    {
-        try {
-            $model    = $this->imageModel();
-            $prompt   = $this->buildEditPrompt($productName);
-            $base64   = base64_encode(file_get_contents($processedPath));
-            $dataUri  = 'data:image/jpeg;base64,' . $base64;
-
-            Log::info("ImageEdit: Trying multimodal /chat/completions for [{$productName}]");
-
-            $response = Http::connectTimeout(15)
-                ->timeout(200)
-                ->withHeaders([
-                    'Authorization' => 'Bearer ' . $this->apiKey(),
-                    'Content-Type'  => 'application/json',
-                    'HTTP-Referer'  => config('app.url'),
-                    'X-Title'       => 'MediNova Pharma',
-                ])
-                ->post(self::OPENROUTER_BASE . '/chat/completions', [
-                    'model'      => $model,
-                    'modalities' => ['image', 'text'],
-                    'messages'   => [
-                        [
-                            'role'    => 'user',
-                            'content' => [
-                                [
-                                    'type'      => 'image_url',
-                                    'image_url' => ['url' => $dataUri],
-                                ],
-                                [
-                                    'type' => 'text',
-                                    'text' => $prompt,
-                                ],
-                            ],
-                        ],
-                    ],
-                ]);
-
-            return $this->extractImageFromResponse($response, $slug, $tempDir);
-
-        } catch (\Exception $e) {
-            Log::error("ImageEdit: Multimodal exception: " . $e->getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Parse image out of /chat/completions response (handles multiple formats).
-     */
-    private function extractImageFromResponse($response, string $slug, string $tempDir): ?string
-    {
-        if (!$response->successful()) {
-            Log::warning("ImageEdit: Response HTTP {$response->status()}: " . substr($response->body(), 0, 300));
-            return null;
-        }
-
-        $rawPath = "{$tempDir}/{$slug}_raw.png";
-        $message = $response->json('choices.0.message', []);
-
-        // Format 1: message.images[] array
-        if (!empty($message['images'])) {
-            foreach ($message['images'] as $img) {
-                $url = $img['image_url']['url'] ?? ($img['url'] ?? null);
-                if ($url && str_starts_with($url, 'data:image')) {
-                    $decoded = base64_decode(explode(',', $url, 2)[1] ?? '');
-                    if ($decoded && strlen($decoded) > 1000) {
-                        file_put_contents($rawPath, $decoded);
-                        return $rawPath;
-                    }
-                }
-                if ($url && filter_var($url, FILTER_VALIDATE_URL)) {
-                    file_put_contents($rawPath, Http::timeout(30)->get($url)->body());
-                    return $rawPath;
-                }
-            }
-        }
-
-        // Format 2: base64 in content
-        $content = $message['content'] ?? '';
-        if (str_starts_with(trim($content), 'data:image')) {
-            $decoded = base64_decode(explode(',', $content, 2)[1] ?? '');
-            if ($decoded && strlen($decoded) > 1000) {
-                file_put_contents($rawPath, $decoded);
-                return $rawPath;
-            }
-        }
-
-        // Format 3: URL in content
-        if (filter_var(trim($content), FILTER_VALIDATE_URL)) {
-            file_put_contents($rawPath, Http::timeout(30)->get(trim($content))->body());
+            Log::info("ImageEdit: Fal.ai edit SUCCESS for [{$productName}]");
             return $rawPath;
-        }
 
-        Log::warning("ImageEdit: Could not extract image from response", [
-            'content_preview' => substr($content, 0, 200),
-        ]);
-        return null;
+        } catch (\Exception $e) {
+            Log::warning("ImageEdit: Fal.ai edit exception: " . $e->getMessage());
+            return null;
+        }
     }
 
     /**
