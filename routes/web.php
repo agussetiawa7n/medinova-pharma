@@ -24,6 +24,10 @@ Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::get('/products', [ProductController::class, 'index'])->name('products.index');
 Route::get('/products/{slug}', [ProductController::class, 'show'])->name('products.show');
 
+// Composition (salt) pages
+Route::get('/composition/{composition:slug}', [\App\Http\Controllers\CompositionController::class, 'show'])
+    ->name('composition.show');
+
 // Static pages
 Route::get('/contact', [ContactController::class, 'show'])->name('contact');
 Route::post('/contact', [ContactController::class, 'store'])->name('contact.store');

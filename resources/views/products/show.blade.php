@@ -1,7 +1,80 @@
 @extends('layouts.app')
 
-@section('title', $product->name . ' — MediNova Pharma')
-@section('meta_description', \Illuminate\Support\Str::limit(strip_tags($product->short_description ?? $product->name), 155))
+@section('title', $product->name)
+@section('meta_description', \Illuminate\Support\Str::limit(strip_tags($product->meta_description ?: ($product->short_description ?? $product->name)), 155))
+
+@push('head')
+@php
+    $canonical  = route('products.show', $product->slug);
+    $inStockLd  = $product->track_inventory ? (($product->stock_quantity > 0 || $product->allow_backorder) ? 'InStock' : 'OutOfStock') : 'InStock';
+    $ldDesc     = \Illuminate\Support\Str::limit(trim(strip_tags($product->short_description ?: $product->description)), 300);
+
+    $productLd = [
+        '@context'    => 'https://schema.org/',
+        '@type'       => 'Product',
+        'name'        => $product->name,
+        'image'       => [$product->thumbnail_url],
+        'description' => $ldDesc,
+        'sku'         => $product->sku,
+        'category'    => optional($product->category)->name,
+        'brand'       => ['@type' => 'Brand', 'name' => optional($product->brand)->name ?: 'Medinova Pharma'],
+        'offers'      => [
+            '@type'         => 'Offer',
+            'url'           => $canonical,
+            'priceCurrency' => 'USD',
+            'price'         => number_format((float) $product->price, 2, '.', ''),
+            'availability'  => 'https://schema.org/' . $inStockLd,
+        ],
+    ];
+    if ($product->composition) {
+        $productLd['activeIngredient'] = $product->composition;
+    }
+    $rc = (int) ($product->reviews_count ?? $product->reviews->count());
+    if ($rc > 0) {
+        $productLd['aggregateRating'] = [
+            '@type'       => 'AggregateRating',
+            'ratingValue' => (string) $product->average_rating,
+            'reviewCount' => (string) $rc,
+        ];
+    }
+
+    $crumbs = [
+        ['@type' => 'ListItem', 'position' => 1, 'name' => 'Home', 'item' => route('home')],
+        ['@type' => 'ListItem', 'position' => 2, 'name' => 'Shop', 'item' => route('products.index')],
+    ];
+    $pos = 3;
+    if ($product->category) {
+        $crumbs[] = ['@type' => 'ListItem', 'position' => $pos++, 'name' => $product->category->name, 'item' => route('products.index', ['category' => $product->category->slug])];
+    }
+    $crumbs[] = ['@type' => 'ListItem', 'position' => $pos, 'name' => $product->name, 'item' => $canonical];
+    $breadcrumbLd = ['@context' => 'https://schema.org/', '@type' => 'BreadcrumbList', 'itemListElement' => $crumbs];
+
+    $graph = [$productLd, $breadcrumbLd];
+
+    if (!empty($product->faq) && is_array($product->faq)) {
+        $qa = [];
+        foreach ($product->faq as $f) {
+            $q = is_array($f) ? ($f['q'] ?? '') : '';
+            $a = is_array($f) ? ($f['a'] ?? '') : '';
+            if ($q && $a) {
+                $qa[] = ['@type' => 'Question', 'name' => $q, 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $a]];
+            }
+        }
+        if ($qa) {
+            $graph[] = ['@context' => 'https://schema.org/', '@type' => 'FAQPage', 'mainEntity' => $qa];
+        }
+    }
+@endphp
+<link rel="canonical" href="{{ $canonical }}">
+<meta property="og:type" content="product">
+<meta property="og:title" content="{{ $product->name }}">
+<meta property="og:description" content="{{ $ldDesc }}">
+<meta property="og:image" content="{{ $product->thumbnail_url }}">
+<meta property="og:url" content="{{ $canonical }}">
+@foreach($graph as $ld)
+<script type="application/ld+json">{!! json_encode($ld, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
+@endforeach
+@endpush
 
 @section('breadcrumb')
     <ol>
@@ -273,6 +346,15 @@
                 </div>
             </div>
 
+            {{-- Prescription warning (YMYL) --}}
+            @if($product->requires_prescription)
+                <div class="d-flex align-items-start gap-2 p-3 mb-4 rounded-3"
+                     style="background:#FEF3C7; border-left:4px solid #F59E0B; color:#92400E; font-size:13.5px;">
+                    <i class="fa-solid fa-triangle-exclamation mt-1"></i>
+                    <span><strong>Prescription required.</strong> This medicine should only be used under the guidance of a registered medical practitioner. A valid prescription may be required at checkout.</span>
+                </div>
+            @endif
+
             {{-- Meta info --}}
             <ul class="list-unstyled small text-muted mb-0" style="font-size:13.5px;">
                 @if($product->category)
@@ -282,7 +364,13 @@
                     <li class="mb-1"><strong class="text-dark">Manufacturer:</strong> {{ $product->manufacturer }}</li>
                 @endif
                 @if($product->composition)
-                    <li class="mb-1"><strong class="text-dark">Composition:</strong> {{ $product->composition }}</li>
+                    <li class="mb-1"><strong class="text-dark">Composition:</strong>
+                        @if($product->compositionModel)
+                            <a href="{{ route('composition.show', $product->compositionModel->slug) }}" style="color:#e61f7f; text-decoration:none;">{{ $product->composition }}</a>
+                        @else
+                            {{ $product->composition }}
+                        @endif
+                    </li>
                 @endif
                 @if(is_array($product->tags) && count($product->tags))
                     <li><strong class="text-dark">Tags:</strong> {{ implode(', ', $product->tags) }}</li>
@@ -300,6 +388,11 @@
             <li class="nav-item" role="presentation">
                 <button class="nav-link fw-bold" id="tab-details" data-bs-toggle="tab" data-bs-target="#pane-details" type="button" role="tab">Additional Info</button>
             </li>
+            @if(!empty($product->faq))
+            <li class="nav-item" role="presentation">
+                <button class="nav-link fw-bold" id="tab-faq" data-bs-toggle="tab" data-bs-target="#pane-faq" type="button" role="tab">FAQ</button>
+            </li>
+            @endif
             <li class="nav-item" role="presentation">
                 <button class="nav-link fw-bold" id="tab-reviews" data-bs-toggle="tab" data-bs-target="#pane-reviews" type="button" role="tab">Reviews ({{ $reviewCnt }})</button>
             </li>
@@ -308,10 +401,26 @@
         <div class="tab-content py-4">
             <div class="tab-pane fade show active" id="pane-desc" role="tabpanel">
                 <div style="max-width:900px; line-height:1.8; color:#636363;">
+                    @php
+                        $allowedTags = '<h1><h2><h3><h4><h5><h6><p><ul><ol><li><a><strong><b><em><i><br><hr><blockquote><span><div><table><thead><tbody><tr><th><td><img><sup><sub><code><pre>';
+                    @endphp
                     @if($product->description)
-                        {!! strip_tags($product->description, '<h1><h2><h3><h4><h5><h6><p><ul><ol><li><a><strong><b><em><i><br><hr><blockquote><span><div><table><thead><tbody><tr><th><td><img><sup><sub><code><pre>') !!}
+                        {!! strip_tags($product->description, $allowedTags) !!}
                     @else
                         <p class="text-muted">No detailed description available.</p>
+                    @endif
+
+                    @if($product->how_it_works)
+                        <h3 class="mt-4">How it works</h3>
+                        {!! strip_tags($product->how_it_works, $allowedTags) !!}
+                    @endif
+                    @if($product->side_effects)
+                        <h3 class="mt-4">Side effects</h3>
+                        {!! strip_tags($product->side_effects, $allowedTags) !!}
+                    @endif
+                    @if($product->contraindications)
+                        <h3 class="mt-4">Who should not take this</h3>
+                        {!! strip_tags($product->contraindications, $allowedTags) !!}
                     @endif
                 </div>
             </div>
@@ -324,15 +433,42 @@
                             @if($product->brand)<tr><th>Brand</th><td>{{ $product->brand->name }}</td></tr>@endif
                             @if($product->category)<tr><th>Category</th><td>{{ $product->category->name }}</td></tr>@endif
                             @if($product->manufacturer)<tr><th>Manufacturer</th><td>{{ $product->manufacturer }}</td></tr>@endif
-                            @if($product->composition)<tr><th>Composition</th><td>{{ $product->composition }}</td></tr>@endif
+                            @if($product->composition)<tr><th>Composition</th><td>@if($product->compositionModel)<a href="{{ route('composition.show', $product->compositionModel->slug) }}" style="color:#e61f7f; text-decoration:none;">{{ $product->composition }}</a>@else{{ $product->composition }}@endif</td></tr>@endif
                             @if($product->storage_conditions)<tr><th>Storage</th><td>{{ $product->storage_conditions }}</td></tr>@endif
                             @if($product->expiry_date)<tr><th>Expiry</th><td>{{ $product->expiry_date->format('M Y') }}</td></tr>@endif
-                            @if($product->weight)<tr><th>Weight</th><td>{{ $product->weight }} kg</td></tr>@endif
+                            @if($product->weight)<tr><th>Weight</th><td>{{ rtrim(rtrim(number_format($product->weight, 2), '0'), '.') }} {{ $product->weight_unit ?? 'g' }}</td></tr>@endif
                             <tr><th>Prescription</th><td>{{ $product->requires_prescription ? 'Required' : 'Not required' }}</td></tr>
                         </tbody>
                     </table>
                 </div>
             </div>
+
+            @if(!empty($product->faq))
+            <div class="tab-pane fade" id="pane-faq" role="tabpanel">
+                <div class="accordion mn-faq" id="faqAccordion" style="max-width:820px;">
+                    @foreach($product->faq as $i => $f)
+                        @php $q = is_array($f) ? ($f['q'] ?? '') : ''; $a = is_array($f) ? ($f['a'] ?? '') : ''; @endphp
+                        @if($q && $a)
+                        <div class="accordion-item">
+                            <h3 class="accordion-header" id="faqHead{{ $i }}">
+                                <button class="accordion-button {{ $i === 0 ? '' : 'collapsed' }}" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#faqBody{{ $i }}"
+                                        aria-expanded="{{ $i === 0 ? 'true' : 'false' }}" aria-controls="faqBody{{ $i }}">
+                                    {{ $q }}
+                                </button>
+                            </h3>
+                            <div id="faqBody{{ $i }}" class="accordion-collapse collapse {{ $i === 0 ? 'show' : '' }}"
+                                 aria-labelledby="faqHead{{ $i }}" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body" style="color:#636363; font-size:14.5px; line-height:1.7;">
+                                    {{ $a }}
+                                </div>
+                            </div>
+                        </div>
+                        @endif
+                    @endforeach
+                </div>
+            </div>
+            @endif
 
             <div class="tab-pane fade" id="pane-reviews" role="tabpanel">
                 @if($product->reviews->isEmpty())
@@ -370,6 +506,15 @@
             </div>
         </div>
     </div>
+
+    {{-- ═════════ Medical disclaimer (YMYL) ═════════ --}}
+    <div class="medical-disclaimer mt-4" role="note">
+        <strong><i class="fa-solid fa-circle-info me-1"></i> Medical Disclaimer:</strong>
+        {{ $product->medical_disclaimer
+            ?: 'The information on this page is for general educational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified doctor or pharmacist before starting, stopping, or changing any medication.' }}
+    </div>
+
+    @include('partials._eeat', ['updated' => $product->updated_at])
 
     {{-- ═════════ Related ═════════ --}}
     @if($related->isNotEmpty())
@@ -426,6 +571,15 @@
     #mnProductTabs .nav-link.active { color:#e61f7f; background:transparent; border-bottom:3px solid #e61f7f; margin-bottom:-2px; }
 
     .mn-thumb-row::-webkit-scrollbar { display: none; }
+
+    .medical-disclaimer {
+        padding: 15px 18px; border-left: 4px solid #ef4444;
+        background-color: #fef2f2; color: #b91c1c;
+        font-size: 13px; line-height: 1.6; border-radius: 6px;
+    }
+    .mn-faq .accordion-button:not(.collapsed) { color:#e61f7f; background:#fff5fa; box-shadow:none; }
+    .mn-faq .accordion-button:focus { box-shadow:none; border-color:#f3c6dc; }
+    .mn-faq .accordion-button { font-weight:600; color:#303030; }
 </style>
 @endpush
 @endsection

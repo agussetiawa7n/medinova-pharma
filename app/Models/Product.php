@@ -14,12 +14,14 @@ class Product extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'category_id', 'brand_id', 'name', 'slug', 'sku', 'short_description', 'description',
+        'category_id', 'composition_id', 'brand_id', 'name', 'slug', 'sku', 'short_description', 'description',
         'thumbnail', 'price', 'compare_price', 'cost_price', 'stock_quantity', 'low_stock_threshold',
-        'track_inventory', 'allow_backorder', 'weight', 'unit', 'requires_prescription',
+        'track_inventory', 'allow_backorder', 'weight', 'weight_unit', 'unit', 'requires_prescription',
         'is_active', 'is_featured', 'is_new_arrival', 'is_best_seller', 'images', 'tags',
         'manufacturer', 'composition', 'storage_conditions', 'expiry_date', 'views',
         'sort_order', 'meta_title', 'meta_description',
+        'faq', 'medical_disclaimer', 'how_it_works', 'side_effects',
+        'contraindications', 'drug_class', 'content_status',
     ];
 
     protected function casts(): array
@@ -31,6 +33,7 @@ class Product extends Model
             'weight'                 => 'decimal:2',
             'images'                 => 'array',
             'tags'                   => 'array',
+            'faq'                    => 'array',
             'expiry_date'            => 'date',
             'track_inventory'        => 'boolean',
             'allow_backorder'        => 'boolean',
@@ -60,6 +63,11 @@ class Product extends Model
     public function brand(): BelongsTo
     {
         return $this->belongsTo(Brand::class);
+    }
+
+    public function compositionModel(): BelongsTo
+    {
+        return $this->belongsTo(Composition::class, 'composition_id');
     }
 
     public function variants(): HasMany

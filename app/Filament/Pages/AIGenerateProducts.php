@@ -2,11 +2,13 @@
 
 namespace App\Filament\Pages;
 
+use App\Jobs\GenerateCompositionContentJob;
 use App\Jobs\GenerateProductImageJob;
 use App\Jobs\GenerateProductTextJob;
 use App\Models\AIProductQueue;
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\Composition;
 use App\Models\Product;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -605,13 +607,20 @@ class AIGenerateProducts extends Page
                 $slug = $originalSlug . '-' . $counter++;
             }
 
-            // Auto-create category if missing
+            // Category whitelist: only match an EXISTING category. Never auto-create
+            // a new one from AI output (prevents junk categories like "Sexual Wellness").
             $categoryId = null;
+            $matchedCategory = false;
             if (!empty($d['category'])) {
-                $categoryId = Category::firstOrCreate(
-                    ['name' => $d['category']],
-                    ['slug' => Str::slug($d['category'])]
-                )->id;
+                $match = Category::whereRaw('LOWER(name) = ?', [strtolower(trim($d['category']))])->first();
+                if ($match) {
+                    $categoryId = $match->id;
+                    $matchedCategory = true;
+                } else {
+                    \Illuminate\Support\Facades\Log::warning(
+                        "AI returned unknown category '{$d['category']}' for product '{$productName}' — left uncategorized for manual review."
+                    );
+                }
             }
 
             // Auto-create brand if missing
@@ -623,6 +632,37 @@ class AIGenerateProducts extends Page
                 )->id;
             }
 
+            // Link (and auto-create) the composition / salt page.
+            // "Tadalafil 5mg" → salt "Tadalafil". Combination drugs ("A + B") are
+            // linked to their FIRST salt for now (a pivot can be added later).
+            $compositionId = null;
+            if (!empty($d['composition'])) {
+                $firstSalt = trim(preg_split('/[+\/,]/', $d['composition'])[0] ?? '');
+                $saltName  = trim(preg_replace('/\d+\s*(mg|mcg|ml|g|iu|%)\b.*/i', '', $firstSalt));
+                if ($saltName !== '') {
+                    $composition = Composition::firstOrCreate(
+                        ['slug' => Str::slug($saltName)],
+                        ['name' => $saltName, 'content_status' => 'needs_review']
+                    );
+                    $compositionId = $composition->id;
+                    // Generate the salt page content only for brand-new compositions.
+                    if ($composition->wasRecentlyCreated) {
+                        GenerateCompositionContentJob::dispatch($composition->id);
+                    }
+                }
+            }
+
+            // YMYL validation gate: hold medical content for human review if it
+            // fails any safety/completeness check instead of auto-publishing it.
+            $issues = app(\App\Services\AIProductService::class)
+                ->validateProductData($d, $matchedCategory);
+            $needsReview = count($issues) > 0;
+            if ($needsReview) {
+                \Illuminate\Support\Facades\Log::warning(
+                    "Product '{$productName}' held for review: " . implode(' ', $issues)
+                );
+            }
+
             Product::create([
                 'name'                  => $productName,
                 'slug'                  => $slug,
@@ -632,18 +672,29 @@ class AIGenerateProducts extends Page
                 'compare_price'         => $d['compare_price'] ?? null,
                 'sku'                   => $d['sku'] ?? null,
                 'category_id'           => $categoryId,
+                'composition_id'        => $compositionId,
                 'brand_id'              => $brandId,
                 'tags'                  => $d['tags'] ?? [],
                 'composition'           => $d['composition'] ?? '',
+                'drug_class'            => $d['drug_class'] ?? null,
+                'how_it_works'          => $d['how_it_works'] ?? null,
+                'side_effects'          => $d['side_effects'] ?? null,
+                'contraindications'     => $d['contraindications'] ?? null,
+                'medical_disclaimer'    => $d['medical_disclaimer'] ?? null,
+                'faq'                   => is_array($d['faq'] ?? null) ? $d['faq'] : [],
                 'manufacturer'          => $d['manufacturer'] ?? '',
                 'storage_conditions'    => $d['storage_conditions'] ?? '',
                 'meta_title'            => $d['meta_title'] ?? '',
                 'meta_description'      => $d['meta_description'] ?? '',
                 'unit'                  => $d['unit'] ?? 'strip',
                 'weight'                => $d['weight'] ?? null,
+                'weight_unit'           => $d['weight_unit'] ?? 'g',
                 'requires_prescription' => $d['requires_prescription'] ?? false,
                 'thumbnail'             => $item->image_path,
-                'is_active'             => true,
+                'content_status'        => $needsReview ? 'needs_review' : 'published',
+                // Content that failed validation stays hidden from the storefront
+                // until an admin reviews and activates it.
+                'is_active'             => !$needsReview,
             ]);
 
             $item->update(['status' => 'saved']);
