@@ -44,11 +44,11 @@ class AIProductService
 
     public function generateProductDetails(string $productName): array
     {
-        set_time_limit(60);
+        set_time_limit(120);
 
         $model     = \App\Models\Setting::get('ai.text_model', 'deepseek-v4-pro');
         $temp      = (float) (\App\Models\Setting::get('ai.temperature', '0.3'));
-        $maxTokens = (int) (\App\Models\Setting::get('ai.max_tokens', '2000'));
+        $maxTokens = (int) (\App\Models\Setting::get('ai.max_tokens', '8000'));
 
         $systemPrompt = <<<'SYS'
 You are a pharmaceutical product data specialist and clinical medical writer with deep knowledge of Indian and international pharma brands, generics, and OTC products.
@@ -70,13 +70,14 @@ YMYL & EEAT MEDICAL-CONTENT RULES (this is health content — accuracy protects 
 12. Use correct clinical terminology alongside plain-language explanations so content is both authoritative and accessible.
 SYS;
 
-        $response = Http::connectTimeout(10)->timeout(40)->withHeaders([
+        $response = Http::connectTimeout(10)->timeout(90)->withHeaders([
             'Authorization' => 'Bearer ' . $this->apiKey(),
             'Content-Type'  => 'application/json',
         ])->post(self::BASE_URL . '/chat/completions', [
-            'model'       => $model,
-            'temperature' => $temp,
-            'max_tokens'  => $maxTokens,
+            'model'           => $model,
+            'temperature'     => $temp,
+            'max_tokens'      => $maxTokens,
+            'response_format' => ['type' => 'json_object'],
             'messages'    => [
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user',   'content' => $this->buildTextPrompt($productName)],
@@ -92,11 +93,11 @@ SYS;
 
     public function generateCategoryDetails(string $categoryName): array
     {
-        set_time_limit(60);
+        set_time_limit(120);
 
         $model     = \App\Models\Setting::get('ai.text_model', 'deepseek-v4-pro');
         $temp      = (float) (\App\Models\Setting::get('ai.temperature', '0.3'));
-        $maxTokens = (int) (\App\Models\Setting::get('ai.max_tokens', '2000'));
+        $maxTokens = (int) (\App\Models\Setting::get('ai.max_tokens', '8000'));
 
         $systemPrompt = <<<'SYS'
 You are an expert pharmaceutical medical writer and clinical pharmacist.
@@ -113,13 +114,14 @@ CRITICAL COMPLIANCE RULES — YMYL & EEAT:
 4. Return ONLY valid JSON. No markdown, no backticks, no explanation text.
 SYS;
 
-        $response = Http::connectTimeout(10)->timeout(40)->withHeaders([
+        $response = Http::connectTimeout(10)->timeout(90)->withHeaders([
             'Authorization' => 'Bearer ' . $this->apiKey(),
             'Content-Type'  => 'application/json',
         ])->post(self::BASE_URL . '/chat/completions', [
-            'model'       => $model,
-            'temperature' => $temp,
-            'max_tokens'  => $maxTokens,
+            'model'           => $model,
+            'temperature'     => $temp,
+            'max_tokens'      => $maxTokens,
+            'response_format' => ['type' => 'json_object'],
             'messages'    => [
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user',   'content' => $this->buildCategoryTextPrompt($categoryName)],
@@ -135,11 +137,11 @@ SYS;
 
     public function generateCompositionDetails(string $saltName): array
     {
-        set_time_limit(60);
+        set_time_limit(120);
 
         $model     = \App\Models\Setting::get('ai.text_model', 'deepseek-v4-pro');
         $temp      = (float) (\App\Models\Setting::get('ai.temperature', '0.3'));
-        $maxTokens = (int) (\App\Models\Setting::get('ai.max_tokens', '2000'));
+        $maxTokens = (int) (\App\Models\Setting::get('ai.max_tokens', '8000'));
 
         $systemPrompt = <<<'SYS'
 You are an expert clinical pharmacist and pharmaceutical medical writer.
@@ -153,13 +155,14 @@ CRITICAL COMPLIANCE RULES — YMYL & EEAT:
 5. Return ONLY valid JSON. No markdown, no backticks, no explanation text.
 SYS;
 
-        $response = Http::connectTimeout(10)->timeout(40)->withHeaders([
+        $response = Http::connectTimeout(10)->timeout(90)->withHeaders([
             'Authorization' => 'Bearer ' . $this->apiKey(),
             'Content-Type'  => 'application/json',
         ])->post(self::BASE_URL . '/chat/completions', [
-            'model'       => $model,
-            'temperature' => $temp,
-            'max_tokens'  => $maxTokens,
+            'model'           => $model,
+            'temperature'     => $temp,
+            'max_tokens'      => $maxTokens,
+            'response_format' => ['type' => 'json_object'],
             'messages'    => [
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user',   'content' => $this->buildCompositionTextPrompt($saltName)],
@@ -402,6 +405,14 @@ PROMPT;
         $content = trim($content);
 
         $data = json_decode($content, true);
+
+        // The model sometimes emits raw control characters (literal newlines/tabs
+        // inside HTML string values), which is invalid JSON. Strip control chars
+        // — 0x00–0x1F excluding nothing structural is safe here — and retry once.
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $sanitized = preg_replace('/[\x00-\x1F]+/', ' ', $content);
+            $data = json_decode($sanitized, true);
+        }
 
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new \Exception('Invalid JSON from AI: ' . json_last_error_msg());

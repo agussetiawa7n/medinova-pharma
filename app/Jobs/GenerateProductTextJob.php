@@ -17,13 +17,16 @@ class GenerateProductTextJob implements ShouldQueue
 
     public int $tries = 2;
     public array $backoff = [15, 30];
-    public int $timeout = 40;
+    // YMYL content is large; DeepSeek generation can take 45–60s. Keep this well
+    // above the service HTTP timeout (90s) so a real queue worker doesn't kill the
+    // job mid-generation.
+    public int $timeout = 120;
 
     public function __construct(public readonly int $queueItemId) {}
 
     public function handle(AIProductService $aiService): void
     {
-        set_time_limit(60);
+        set_time_limit(120);
 
         $item = AIProductQueue::findOrFail($this->queueItemId);
 

@@ -18,7 +18,9 @@ class GenerateCompositionContentJob implements ShouldQueue, ShouldBeUnique
 
     public int $tries = 2;
     public array $backoff = [15, 30];
-    public int $timeout = 60;
+    // Salt-page generation uses the 90s service HTTP timeout; keep the job timeout
+    // above it so a real queue worker doesn't kill it mid-generation.
+    public int $timeout = 120;
 
     public function __construct(public readonly int $compositionId) {}
 
@@ -29,7 +31,7 @@ class GenerateCompositionContentJob implements ShouldQueue, ShouldBeUnique
 
     public function handle(AIProductService $aiService): void
     {
-        set_time_limit(90);
+        set_time_limit(120);
 
         $composition = Composition::find($this->compositionId);
         if (!$composition) {
