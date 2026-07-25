@@ -9,11 +9,21 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 // ── AI Queue Auto-Processing ──
-// Runs every 5 minutes — works on shared hosting with a single cron entry.
-// In Hostinger hPanel, add ONE cron job:
-// * * * * * /usr/local/bin/php8.2 /home/u123456789/domains/yourdomain.com/public_html/artisan schedule:run >> /dev/null 2>&1
-Schedule::command('ai:process-queue --max=3')->everyFiveMinutes()
-    ->withoutOverlapping(10)  // Skip if previous run still going (10 min max)
-    ->runInBackground()
+//
+// Hostinger hPanel → Advanced → Cron Jobs, type "PHP", every minute:
+//   domains/moccasin-chimpanzee-720084.hostingersite.com/artisan schedule:run
+// (hPanel prepends "/usr/bin/php /home/u933134862/" itself. Creating this as a
+//  "Custom" job without the PHP binary makes cron try to execute artisan
+//  directly, which fails with "Permission denied" and never runs.)
+//
+// NO ->runInBackground() here. That option shells out through proc_open, and
+// this plan disables proc_open/exec/shell_exec (hPanel → PHP Configuration →
+// disableFunctions), so a backgrounded task would throw instead of running.
+//
+// One item per tick keeps every run far inside maxExecutionTime (300s) — a
+// DeepSeek text call is 45-90s and an image 2-3 min, so batching times out.
+Schedule::command('ai:process-queue --max=1')
+    ->everyMinute()
+    ->withoutOverlapping(10)
     ->appendOutputTo(storage_path('logs/ai-queue-cron.log'));
 

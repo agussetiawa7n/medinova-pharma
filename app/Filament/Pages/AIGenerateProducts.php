@@ -10,8 +10,10 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Composition;
 use App\Models\Product;
+use App\Services\AIQueueProcessor;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Livewire\WithFileUploads;
@@ -50,7 +52,7 @@ class AIGenerateProducts extends Page
     public string $elapsedTime = '';
     public string $textModel = '';
     public string $imageModel = '';
-    public bool $processingImage = false; // Lock to prevent concurrent image processing
+    public bool $processingImage = false; // legacy flag kept for the blade; the real lock lives in the DB
 
     public function mount(): void
     {
@@ -209,91 +211,61 @@ class AIGenerateProducts extends Page
         $this->completedCount = 0;
         $this->workerStatus   = 'running';
         $this->currentStep    = 2;
+        $this->currentTask    = '';
 
-        // ── Immediately process TEXT generation for all products ──
-        // Text is fast (~5-10s each). Images are dispatched to queue for cron.
-        set_time_limit(600);
-        ini_set('max_execution_time', 600);
-
-        foreach ($items as $item) {
-            try {
-                $this->currentTask = "📝 Generating: {$item->product_name}";
-                dispatch_sync(new GenerateProductTextJob($item->id));
-            } catch (\Exception $e) {
-                Log::error("generateAll text failed [{$item->product_name}]: " . $e->getMessage());
-            }
-        }
-
-        $this->currentTask = '';
         $this->refreshQueueItems();
-        $this->completedCount = collect($this->queueItems)
-            ->whereIn('status', ['completed', 'failed', 'skipped'])->count();
 
-        // Check if any images still pending (will be processed by cron)
-        $imagePending = collect($this->queueItems)->where('status', 'text_generated')->count();
-
-        if ($imagePending > 0) {
-            $this->workerStatus = 'running';
-            Notification::make()
-                ->title('✅ Text done! Images generating...')
-                ->body("Text generated for all {$this->totalCount} items. Images are being generated (auto-updates every 2s).")
-                ->success()
-                ->send();
-        } else {
-            $this->workerStatus = 'idle';
-            Notification::make()
-                ->title('✅ All items ready!')
-                ->body('Review the results below and approve them to save.')
-                ->success()
-                ->send();
-        }
+        // Deliberately NO generation here. This request only enqueues.
+        //
+        // Generating the batch inline used to blow past maxExecutionTime (300s
+        // on this plan) — one DeepSeek text call alone is 45-90s — so the
+        // request died mid-loop and left rows stranded in `generating`.
+        // pollStatus() now advances the queue one step at a time, and the
+        // per-minute cron does the same, so both can run without colliding.
+        Notification::make()
+            ->title("Queued {$this->totalCount} item(s)")
+            ->body('Generation runs one item at a time and updates below automatically. You can safely leave this page — the cron keeps it moving.')
+            ->success()
+            ->send();
     }
 
+    /**
+     * Advance the queue by exactly ONE step, then report state.
+     *
+     * The claim happens in the database (AIQueueProcessor), not in a component
+     * property: `wire:poll` fires every few seconds while a step can take
+     * minutes, so several polls overlap. A PHP flag is per-request and cannot
+     * stop them picking up the same row — which is how the same product ended
+     * up generated repeatedly.
+     */
     public function pollStatus(): void
     {
-        // Refresh DB state
-        $this->refreshQueueItems();
-        $this->completedCount = collect($this->queueItems)
-            ->whereIn('status', ['completed', 'failed', 'skipped'])->count();
+        if ($this->isGenerating) {
+            // Comfortably above one step, comfortably under the 300s cap.
+            @set_time_limit(280);
 
-        // ── Auto-process ONE image job per poll (3s interval) ──
-        // This handles images automatically after text is done, no extra clicks needed.
-        // Lock prevents concurrent execution if image takes longer than poll interval.
-        if ($this->isGenerating && !$this->processingImage) {
-            $imageItem = AIProductQueue::where('status', 'text_generated')
-                ->where('type', 'product') // only products have images
-                ->whereIn('product_name', $this->parsedNames)
-                ->orderBy('updated_at')
-                ->first();
-
-            if ($imageItem) {
-                try {
-                    $this->processingImage = true;
-                    set_time_limit(360);
-                    $this->currentTask = "🖼️ Image: {$imageItem->product_name}";
+            try {
+                $worked = app(AIQueueProcessor::class)->step($this->generationType);
+                if ($worked) {
                     $this->workerStatus = 'running';
-                    dispatch_sync(new GenerateProductImageJob($imageItem->id));
-                    $this->refreshQueueItems();
-                    $this->completedCount = collect($this->queueItems)
-                        ->whereIn('status', ['completed', 'failed', 'skipped'])->count();
-                } catch (\Exception $e) {
-                    Log::error("pollStatus image failed [{$imageItem->product_name}]: " . $e->getMessage());
-                } finally {
-                    $this->processingImage = false;
                 }
+            } catch (\Throwable $e) {
+                // Never let a single bad item break the polling loop.
+                Log::error('pollStatus step failed: ' . $e->getMessage());
             }
         }
 
-        // Detect current task
-        $this->detectCurrentTask();
+        $this->refreshQueueItems();
+        $this->completedCount = collect($this->queueItems)
+            ->whereIn('status', ['completed', 'failed', 'skipped', 'saved'])->count();
 
-        // Check worker health
+        $this->detectCurrentTask();
         $this->checkWorkerStatus();
 
-        if ($this->completedCount >= $this->totalCount && $this->totalCount > 0) {
+        if ($this->totalCount > 0 && $this->completedCount >= $this->totalCount) {
             $this->isGenerating = false;
-            $this->currentStep = 2;
-            $this->currentTask = '';
+            $this->currentStep  = 2;
+            $this->currentTask  = '';
             $this->workerStatus = 'idle';
         }
     }
@@ -321,14 +293,16 @@ class AIGenerateProducts extends Page
             $this->currentTask = "⏳ Waiting in queue: \"{$name}\"";
         }
 
-        // Calculate elapsed time from updated_at
+        // Elapsed time since the item last changed. Carbon 3 returns a SIGNED
+        // float here, which is why the page was showing "-586.828076s".
         if (!empty($active['updated_at'])) {
-            $elapsed = now()->diffInSeconds($active['updated_at']);
-            if ($elapsed < 60) {
-                $this->elapsedTime = $elapsed . 's';
-            } else {
-                $this->elapsedTime = floor($elapsed / 60) . 'm ' . ($elapsed % 60) . 's';
-            }
+            $elapsed = (int) abs(now()->diffInSeconds($active['updated_at']));
+
+            $this->elapsedTime = $elapsed < 60
+                ? $elapsed . 's'
+                : intdiv($elapsed, 60) . 'm ' . ($elapsed % 60) . 's';
+        } else {
+            $this->elapsedTime = '';
         }
     }
 
@@ -359,8 +333,9 @@ class AIGenerateProducts extends Page
 
     public function startQueueWorker(): void
     {
-        // Hostinger shared hosting: background processes are not supported.
-        // Always process synchronously via processNow().
+        // There is no worker process to start on this plan (proc_open/exec are
+        // disabled), so "start" just means: resume stepping through the queue.
+        $this->isGenerating = true;
         $this->processNow();
     }
 
@@ -380,70 +355,39 @@ class AIGenerateProducts extends Page
         }
 
         try {
-            // Set high timeout — image generation can take 2-3 minutes per product
-            set_time_limit(600);
-            ini_set('max_execution_time', 600);
+            @set_time_limit(280);
 
             $this->workerStatus = 'running';
 
-            // Process max 3 items per click to stay within hosting limits
-            $batchSize = 3;
-            $processed = 0;
-
-            // Step 1: Process pending → text_generated / completed
-            $textItems = AIProductQueue::where('status', 'pending')
-                ->where('type', $this->generationType)
-                ->orderBy('created_at')
-                ->take($batchSize)
-                ->get();
-
-            foreach ($textItems as $item) {
-                $this->currentTask = "📝 Generating text for \"{$item->product_name}\"";
-                dispatch_sync(new GenerateProductTextJob($item->id));
-                $processed++;
-            }
-
-            // Step 2: Process text_generated → completed (image, only for products)
-            if ($this->generationType === 'product') {
-                $imageItems = AIProductQueue::where('status', 'text_generated')
-                    ->where('type', 'product')
-                    ->orderBy('updated_at')
-                    ->take($batchSize - $processed)
-                    ->get();
-
-                foreach ($imageItems as $item) {
-                    $this->currentTask = "🖼️ Generating image for \"{$item->product_name}\"";
-                    dispatch_sync(new GenerateProductImageJob($item->id));
-                    $processed++;
-                }
-            }
+            // ONE step per click, same as a poll or a cron tick. Doing three in
+            // a row is what used to exceed maxExecutionTime and kill the request.
+            $item = app(AIQueueProcessor::class)->step($this->generationType);
 
             $this->currentTask = '';
             $this->refreshQueueItems();
             $this->completedCount = collect($this->queueItems)
-                ->whereIn('status', ['completed', 'failed', 'skipped'])->count();
+                ->whereIn('status', ['completed', 'failed', 'skipped', 'saved'])->count();
 
-            $stillPending = AIProductQueue::whereIn('status', ['pending', 'text_generated'])
-                ->where('type', $this->generationType)
-                ->count();
+            $stillPending = app(AIQueueProcessor::class)->pendingCount($this->generationType);
 
             if ($stillPending > 0) {
-                $this->workerStatus = 'stopped'; // Needs another click
+                $this->workerStatus = 'running';
                 Notification::make()
-                    ->title("⚡ Batch done! {$processed} processed.")
-                    ->body("{$stillPending} items still pending — click '▶ Start Worker' again.")
-                    ->warning()
+                    ->title($item ? "Processed: {$item->product_name}" : 'Another worker is busy')
+                    ->body("{$stillPending} item(s) left — they continue automatically here and via cron.")
+                    ->success()
                     ->send();
             } else {
+                $this->isGenerating = false;
                 $this->workerStatus = 'idle';
                 Notification::make()
-                    ->title('✅ All products processed!')
-                    ->body('Review the results and approve products to save them.')
+                    ->title('All items processed')
+                    ->body('Review the results and approve them to save.')
                     ->success()
                     ->send();
             }
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('processNow failed: ' . $e->getMessage());
             $this->workerStatus = 'stale';
             Notification::make()
@@ -454,33 +398,55 @@ class AIGenerateProducts extends Page
         }
     }
 
+    /**
+     * There is no worker daemon to restart on this plan. "Restart" means:
+     * free any dead locks so stuck items become claimable again, then resume.
+     */
     public function restartQueueWorker(): void
     {
-        try {
-            \Artisan::call('queue:restart');
-            sleep(1);
-            $this->startQueueWorker();
-            Notification::make()->title('Queue worker restarted!')->success()->send();
-        } catch (\Exception $e) {
-            Notification::make()->title('Restart failed')->body($e->getMessage())->danger()->send();
-        }
+        $reclaimed = app(AIQueueProcessor::class)->reclaimStale();
+
+        AIProductQueue::where('type', $this->generationType)
+            ->whereIn('product_name', $this->parsedNames)
+            ->where('status', 'failed')
+            ->update([
+                'status'        => 'pending',
+                'locked_at'     => null,
+                'retry_count'   => 0,
+                'error_message' => null,
+            ]);
+
+        $this->isGenerating = true;
+        $this->refreshQueueItems();
+
+        Notification::make()
+            ->title('Queue resumed')
+            ->body("{$reclaimed} stuck item(s) released; failed items re-queued.")
+            ->success()
+            ->send();
     }
 
     public function forceStopJobs(): void
     {
-        // Mark all active jobs as failed
+        // Mark all active jobs as failed.
+        // NOTE: `DB` was previously used here without an import, so this method
+        // fatally errored ("Class App\Filament\Pages\DB not found") the moment
+        // it got past the update — the admin saw a 500, not a clean stop.
         $affected = AIProductQueue::whereIn('status', ['pending', 'generating', 'text_generated'])
+            ->where('type', $this->generationType)
             ->whereIn('product_name', $this->parsedNames)
             ->update([
-                'status' => 'failed',
+                'status'        => 'failed',
+                'locked_at'     => null,
                 'error_message' => 'Force stopped by admin at ' . now()->format('H:i:s'),
             ]);
 
-        // Clear pending jobs from queue table
-        DB::table('jobs')->delete();
-
-        // Send restart signal to kill running workers
-        \Artisan::call('queue:restart');
+        // Only drop this feature's queued jobs. The old code truncated the whole
+        // `jobs` table, which also threw away unrelated work such as the
+        // composition-content jobs dispatched when a product is saved.
+        DB::table('jobs')
+            ->where('payload', 'like', '%GenerateProduct%')
+            ->delete();
 
         $this->isGenerating = false;
         $this->workerStatus = 'stopped';
@@ -521,26 +487,59 @@ class AIGenerateProducts extends Page
         $this->refreshQueueItems();
     }
 
+    /**
+     * Regeneration runs INLINE.
+     *
+     * These used to call dispatch(), which pushes onto the database queue —
+     * but this plan cannot run `queue:work` (proc_open/exec are disabled), so
+     * the job sat in the `jobs` table forever while the UI claimed success.
+     */
     public function regenerateText(int $queueId): void
     {
         $item = AIProductQueue::findOrFail($queueId);
-        $item->update(['status' => 'pending', 'error_message' => null]);
-        dispatch(new GenerateProductTextJob($queueId));
-        $this->refreshQueueItems();
-        Notification::make()->title('Text regeneration dispatched.')->success()->send();
+        $item->update([
+            'status'        => 'pending',
+            'locked_at'     => null,
+            'retry_count'   => 0,
+            'error_message' => null,
+        ]);
+
+        $this->runSingleStep($item, 'Text regenerated');
     }
 
     public function regenerateImage(int $queueId): void
     {
         $item = AIProductQueue::findOrFail($queueId);
         $item->update([
-            'status'       => 'text_generated',
-            'image_path'   => null,
+            'status'        => 'text_generated',
+            'image_path'    => null,
+            'locked_at'     => null,
             'error_message' => null,
         ]);
-        dispatch(new GenerateProductImageJob($queueId));
-        $this->refreshQueueItems();
-        Notification::make()->title('Image regeneration dispatched.')->success()->send();
+
+        $this->runSingleStep($item, 'Image regenerated');
+    }
+
+    private function runSingleStep(AIProductQueue $item, string $successTitle): void
+    {
+        @set_time_limit(280);
+
+        try {
+            dispatch_sync(
+                $item->status === 'pending'
+                    ? new GenerateProductTextJob($item->id)
+                    : new GenerateProductImageJob($item->id)
+            );
+
+            Notification::make()->title($successTitle)->body($item->product_name)->success()->send();
+        } catch (\Throwable $e) {
+            Log::error("Regeneration failed for #{$item->id}: " . $e->getMessage());
+            $item->update(['status' => 'failed', 'error_message' => Str::limit($e->getMessage(), 450)]);
+            Notification::make()->title('Regeneration failed')->body($e->getMessage())->danger()->send();
+        } finally {
+            AIProductQueue::where('id', $item->id)->update(['locked_at' => null]);
+            $this->refreshQueueItems();
+        }
     }
 
     public function saveApproved(): void

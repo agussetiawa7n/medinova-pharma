@@ -54,10 +54,13 @@ class GenerateProductTextJob implements ShouldQueue
                     'status'          => 'text_generated',
                 ]);
 
-                // Dispatch image job
-                if ((bool) \App\Models\Setting::get('ai.generate_images', 'true')) {
-                    dispatch(new GenerateProductImageJob($this->queueItemId));
-                } else {
+                // Do NOT dispatch the image job here. There is no queue worker
+                // on this hosting plan (proc_open/exec are disabled), so a
+                // dispatched job would just pile up unprocessed in the `jobs`
+                // table. AIQueueProcessor picks the item up on its next step.
+                // Compare with '1' like AIProductService does — the setting is
+                // a string, and (bool) "false" is true.
+                if (\App\Models\Setting::get('ai.generate_images', '1') !== '1') {
                     $item->update(['status' => 'completed']);
                 }
             }
@@ -65,14 +68,10 @@ class GenerateProductTextJob implements ShouldQueue
         } catch (\Exception $e) {
             Log::error("AI text failed #{$this->queueItemId}: " . $e->getMessage());
 
-            $item->update([
-                'status'        => $this->attempts() >= $this->tries ? 'failed' : 'pending',
-                'error_message' => $e->getMessage(),
-            ]);
+            // Leave status/retry bookkeeping to AIQueueProcessor so attempts are
+            // counted in exactly one place. Just surface the error and rethrow.
+            $item->update(['error_message' => \Illuminate\Support\Str::limit($e->getMessage(), 450)]);
 
-            if ($this->attempts() >= $this->tries) {
-                return;
-            }
             throw $e;
         }
     }

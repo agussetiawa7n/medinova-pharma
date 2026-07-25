@@ -2,77 +2,52 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\GenerateProductImageJob;
-use App\Jobs\GenerateProductTextJob;
-use App\Models\AIProductQueue;
+use App\Services\AIQueueProcessor;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 
 class ProcessAIQueue extends Command
 {
-    protected $signature   = 'ai:process-queue
-                                {--max=3 : Maximum number of items to process in one run}
-                                {--text-only : Only process text generation jobs}
-                                {--image-only : Only process image generation jobs}';
+    protected $signature = 'ai:process-queue
+                                {--max=1 : How many steps to run in this invocation}
+                                {--type= : Restrict to "product" or "category"}';
 
-    protected $description = 'Process pending AI product generation jobs. Safe for shared hosting cron.';
+    protected $description = 'Advance the AI generation queue by one step per item. Safe for shared-hosting cron.';
 
-    public function handle(): int
+    /**
+     * A "step" is one text generation OR one image generation for a single
+     * item — never a whole product end to end. The cron fires every minute, so
+     * throughput comes from frequency, not from batching inside one run.
+     * Batching is what used to push runs past maxExecutionTime and strand rows.
+     */
+    public function handle(AIQueueProcessor $processor): int
     {
-        $max = (int) $this->option('max');
-        $processed = 0;
+        $max  = max(1, (int) $this->option('max'));
+        $type = $this->option('type') ?: null;
 
-        $this->info("AI Queue Processor started. Max items: {$max}");
-
-        // ── STEP 1: Process pending text jobs ──
-        if (!$this->option('image-only')) {
-            $textItems = AIProductQueue::where('status', 'pending')
-                ->orderBy('created_at')
-                ->take($max)
-                ->get();
-
-            foreach ($textItems as $item) {
-                if ($processed >= $max) break;
-
-                $this->line("→ Text: [{$item->product_name}]");
-
-                try {
-                    dispatch_sync(new GenerateProductTextJob($item->id));
-                    $processed++;
-                    $this->info("  ✅ Text done: {$item->product_name}");
-                } catch (\Exception $e) {
-                    $this->error("  ❌ Text failed: " . $e->getMessage());
-                    Log::error("ai:process-queue text failed [{$item->product_name}]: " . $e->getMessage());
-                }
-            }
+        $reclaimed = $processor->reclaimStale();
+        if ($reclaimed > 0) {
+            $this->warn("Reclaimed {$reclaimed} stale item(s) from a previous run.");
         }
 
-        // ── STEP 2: Process text_generated → image jobs ──
-        if (!$this->option('text-only')) {
-            $imageItems = AIProductQueue::where('status', 'text_generated')
-                ->orderBy('updated_at')
-                ->take($max)
-                ->get();
+        $done = 0;
 
-            foreach ($imageItems as $item) {
-                if ($processed >= $max) break;
+        for ($i = 0; $i < $max; $i++) {
+            $item = $processor->step($type);
 
-                $this->line("→ Image: [{$item->product_name}]");
-
-                try {
-                    dispatch_sync(new GenerateProductImageJob($item->id));
-                    $processed++;
-                    $this->info("  ✅ Image done: {$item->product_name}");
-                } catch (\Exception $e) {
-                    $this->error("  ❌ Image failed: " . $e->getMessage());
-                    Log::error("ai:process-queue image failed [{$item->product_name}]: " . $e->getMessage());
-                }
+            if (!$item) {
+                break; // nothing left to claim, or another worker holds it
             }
+
+            $done++;
+            $this->line("→ [{$item->status}] {$item->product_name}");
         }
 
-        $pending = AIProductQueue::whereIn('status', ['pending', 'text_generated'])->count();
-        $this->info("Done. Processed: {$processed}. Still pending: {$pending}");
+        $this->info(sprintf(
+            'Steps run: %d. Still outstanding: %d.',
+            $done,
+            $processor->pendingCount($type)
+        ));
 
-        return Command::SUCCESS;
+        return self::SUCCESS;
     }
 }
