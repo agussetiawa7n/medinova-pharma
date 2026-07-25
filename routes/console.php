@@ -10,11 +10,17 @@ Artisan::command('inspire', function () {
 
 // ── AI Queue Auto-Processing ──
 //
-// Hostinger hPanel → Advanced → Cron Jobs, type "PHP", every minute:
-//   domains/moccasin-chimpanzee-720084.hostingersite.com/artisan schedule:run
-// (hPanel prepends "/usr/bin/php /home/u933134862/" itself. Creating this as a
-//  "Custom" job without the PHP binary makes cron try to execute artisan
-//  directly, which fails with "Permission denied" and never runs.)
+// Hostinger hPanel → Advanced → Cron Jobs, type "Custom", every minute
+// (* * * * *). This exact command is live and verified:
+//
+//   /opt/alt/php84/usr/bin/php /home/u933134862/domains/moccasin-chimpanzee-720084.hostingersite.com/artisan schedule:run
+//
+// Two traps, both hit on this account before it worked:
+//   1. Omitting the PHP binary (a "Custom" job of just ".../artisan schedule:run")
+//      makes cron exec artisan directly → "Permission denied", never runs.
+//   2. hPanel's "PHP" job type hardcodes /usr/bin/php, which is 8.2 here even
+//      though the site runs 8.4 → "Composer dependencies require PHP >= 8.4.0".
+//      The versioned CLI binary must be spelled out, hence the Custom job.
 //
 // NO ->runInBackground() here. That option shells out through proc_open, and
 // this plan disables proc_open/exec/shell_exec (hPanel → PHP Configuration →
