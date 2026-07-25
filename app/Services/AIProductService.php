@@ -13,6 +13,47 @@ class AIProductService
     // DeepSeek API
     private const BASE_URL = 'https://api.deepseek.com';
 
+    /**
+     * Fallback disclaimer text used whenever the model returns an empty one.
+     * YMYL rule: a product must NEVER go live without a disclaimer.
+     */
+    private const DEFAULT_DISCLAIMER = 'The information on this page is for general educational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified doctor or pharmacist before starting, stopping, or changing any medication.';
+
+    /**
+     * Inline-styled disclaimer block appended to the description HTML.
+     * Inline styles (not just a class) so it stays visible in the admin
+     * preview, exports and anywhere the site CSS is not loaded.
+     */
+    private function disclaimerHtml(string $text): string
+    {
+        $text = e(trim($text) ?: self::DEFAULT_DISCLAIMER);
+
+        return '<div class="medical-disclaimer" style="margin-top:24px;padding:14px 18px;border-left:4px solid #ef4444;background:#fef2f2;color:#b91c1c;font-size:13px;line-height:1.6;border-radius:6px;">'
+             . '<strong>Medical Disclaimer:</strong> ' . $text . '</div>';
+    }
+
+    /**
+     * Safety net for the YMYL disclaimer rule. The prompt asks for it, but a
+     * model can still drop it — so we guarantee it here instead of hoping.
+     * Fills an empty medical_disclaimer and appends the styled block to the
+     * description when the model did not include one.
+     */
+    private function ensureDisclaimer(array $data): array
+    {
+        $disclaimer = trim((string) ($data['medical_disclaimer'] ?? ''));
+        if ($disclaimer === '') {
+            $disclaimer = self::DEFAULT_DISCLAIMER;
+            $data['medical_disclaimer'] = $disclaimer;
+        }
+
+        $description = (string) ($data['description'] ?? '');
+        if ($description !== '' && !Str::contains($description, 'medical-disclaimer')) {
+            $data['description'] = $description . $this->disclaimerHtml($disclaimer);
+        }
+
+        return $data;
+    }
+
     private function apiKey(): string
     {
         return \App\Models\Setting::get('ai.deepseek_api_key', config('services.deepseek.api_key', ''));
@@ -66,8 +107,17 @@ YMYL & EEAT MEDICAL-CONTENT RULES (this is health content — accuracy protects 
 8. All medical content MUST be evidence-based, objective, and unbiased. No marketing hype, no exaggerated efficacy claims, no "miracle" language.
 9. If you are not certain about a clinical fact (side effect, contraindication, mechanism), OMIT it or return an empty value — do NOT invent it. An empty field is far safer than a wrong one.
 10. Never give individual dosing/medical advice; write at a general, educational level and always point the reader to a qualified doctor.
-11. ALWAYS include a clear medical_disclaimer and a helpful, accurate faq (minimum 4 Q&A) for the product.
+11. MANDATORY — every single product MUST have a non-empty medical_disclaimer, AND the description HTML MUST end with the styled disclaimer <div> shown in the template. A product without a visible disclaimer is a compliance failure. Never skip it, never shorten it away.
 12. Use correct clinical terminology alongside plain-language explanations so content is both authoritative and accessible.
+13. Include a helpful, accurate faq with a minimum of 5 Q&A pairs, each answer 2-3 full sentences (not one-liners).
+
+HTML QUALITY & PRESENTATION RULES (the description is rendered directly on the storefront):
+14. The description must be rich, well-structured, scannable HTML — not a wall of plain text. Use <h2>/<h3> headings, short 2-3 sentence <p> paragraphs, <ul><li> bullets, a <table> of quick facts, and the styled callout <div>s given in the template.
+15. Copy the inline style="..." attributes from the template EXACTLY as written. They are what makes the page look designed rather than plain. Do not strip, rename or "simplify" them.
+16. Aim for 450-700 words in the description. Substantial and genuinely useful — never padded with filler or repeated sentences.
+17. NEVER put "Side Effects", "Precautions", "Contraindications" or "How it works / Mechanism of Action" sections inside the description. Those live in their own dedicated fields (side_effects, contraindications, how_it_works) and are rendered separately — repeating them in the description creates duplicate content that hurts SEO.
+18. SEO: use the exact product name in the first sentence, in the first <h2>, and naturally 3-5 times overall. Write for humans first — no keyword stuffing.
+19. Output valid HTML with properly closed tags. Escape "&" as "&amp;" inside text.
 SYS;
 
         $response = Http::connectTimeout(10)->timeout(90)->withHeaders([
@@ -88,7 +138,9 @@ SYS;
             throw new \Exception('DeepSeek API error: ' . $response->body());
         }
 
-        return $this->parseJson($response->json('choices.0.message.content'));
+        return $this->ensureDisclaimer(
+            $this->parseJson($response->json('choices.0.message.content'))
+        );
     }
 
     public function generateCategoryDetails(string $categoryName): array
@@ -236,11 +288,18 @@ IMPORTANT INSTRUCTIONS:
 - Brand MUST be one of: [{$brands}]. If no match, use the closest or the brand extracted from the product name.
 - SKU format: MED-{first 3 letters of brand}-{strength numbers}, e.g., MED-MAL-100
 
+DESCRIPTION RULES (most important field — this is the page body customers read):
+- Follow the HTML skeleton below section-for-section, keeping every inline style="..." exactly as written.
+- Replace only the placeholder text; keep the headings, table, callout boxes and the closing disclaimer block.
+- 450-700 words total, written by a clinical pharmacist for a patient: clear, calm, factual, no marketing hype.
+- Do NOT add Side Effects / Precautions / Contraindications / Mechanism sections here — those are separate fields below.
+- If a fact is unknown (e.g. manufacturer), write "Not specified" in the table rather than inventing it.
+
 Return this exact JSON structure:
 {
 "name":"{$productName}",
 "short_description":"2-3 sentence accurate medical summary of this specific product",
-"description":"<h2>About {$productName}</h2><p>overview</p><h3>Uses & Benefits</h3><ul><li>...</li></ul><h3>Dosage</h3><p>...</p><h3>Side Effects</h3><ul><li>...</li></ul><h3>Precautions</h3><ul><li>...</li></ul>",
+"description":"<h2>About {$productName}</h2><p>2-3 sentence opening that names {$productName}, its active ingredient with strength, its drug class and what it treats.</p><p>A second short paragraph on who it is typically prescribed for and what a patient can realistically expect from the treatment.</p><h3>Quick Facts</h3><table style=\"width:100%;border-collapse:collapse;margin:16px 0;font-size:14.5px;\"><tbody><tr><th style=\"width:38%;text-align:left;padding:10px 14px;background:#f8fafb;border:1px solid #e5e7eb;font-weight:600;\">Active Ingredient</th><td style=\"padding:10px 14px;border:1px solid #e5e7eb;\">salt with strength</td></tr><tr><th style=\"text-align:left;padding:10px 14px;background:#f8fafb;border:1px solid #e5e7eb;font-weight:600;\">Drug Class</th><td style=\"padding:10px 14px;border:1px solid #e5e7eb;\">pharmacological class</td></tr><tr><th style=\"text-align:left;padding:10px 14px;background:#f8fafb;border:1px solid #e5e7eb;font-weight:600;\">Manufacturer</th><td style=\"padding:10px 14px;border:1px solid #e5e7eb;\">real manufacturer</td></tr><tr><th style=\"text-align:left;padding:10px 14px;background:#f8fafb;border:1px solid #e5e7eb;font-weight:600;\">Form &amp; Pack</th><td style=\"padding:10px 14px;border:1px solid #e5e7eb;\">e.g. Tablet, strip of 10</td></tr><tr><th style=\"text-align:left;padding:10px 14px;background:#f8fafb;border:1px solid #e5e7eb;font-weight:600;\">Prescription</th><td style=\"padding:10px 14px;border:1px solid #e5e7eb;\">Required / Not required</td></tr></tbody></table><h3>Key Benefits</h3><ul><li><strong>Short benefit label</strong> — one clear supporting sentence.</li><li><strong>Second benefit</strong> — supporting sentence.</li><li><strong>Third benefit</strong> — supporting sentence.</li><li><strong>Fourth benefit</strong> — supporting sentence.</li></ul><h3>What {$productName} Is Used For</h3><p>One short lead-in sentence.</p><ul><li>primary approved indication</li><li>second indication</li><li>third indication</li></ul><h3>How to Take {$productName}</h3><p>General guidance on timing, food and water — educational only, never a personal dose recommendation.</p><ul><li>When to take it (with or without food, time of day)</li><li>How to swallow it (whole with water, do not crush/chew if applicable)</li><li>How long a typical course runs and why it should be completed</li></ul><div style=\"margin:18px 0;padding:14px 18px;border-left:4px solid #e61f7f;background:#fff5fa;border-radius:6px;font-size:14px;line-height:1.7;color:#4b5563;\"><strong style=\"color:#e61f7f;\">Good to know:</strong> one genuinely useful practical tip about taking this medicine correctly.</div><h3>Missed Dose &amp; Overdose</h3><ul><li><strong>Missed dose:</strong> what to do, and the reminder never to double up.</li><li><strong>Overdose:</strong> advice to contact a doctor or emergency services immediately.</li></ul><h3>Storage &amp; Handling</h3><p>Specific storage temperature, light and moisture guidance, plus keeping it out of reach of children.</p><div class=\"medical-disclaimer\" style=\"margin-top:24px;padding:14px 18px;border-left:4px solid #ef4444;background:#fef2f2;color:#b91c1c;font-size:13px;line-height:1.6;border-radius:6px;\"><strong>Medical Disclaimer:</strong> The information about {$productName} on this page is for general educational purposes only and is not a substitute for professional medical advice, diagnosis or treatment. Always consult a qualified doctor or pharmacist before starting, stopping or changing any medication.</div>",
 "price":float_USD,
 "compare_price":float_slightly_higher_than_price_USD,
 "category":"matched or accurately created category",
@@ -248,15 +307,15 @@ Return this exact JSON structure:
 "tags":["relevant","medical","tags"],
 "composition":"Exact active ingredient(s) with strength (e.g., Sildenafil Citrate 100mg)",
 "drug_class":"Pharmacological class (e.g., 'PDE5 inhibitor'). Empty string if unsure.",
-"how_it_works":"<p>Plain-language + clinical explanation of the mechanism of action. Empty string if unsure.</p>",
-"side_effects":"<ul><li>common side effects</li><li>serious effects that need urgent medical help</li></ul>",
-"contraindications":"<ul><li>who should NOT take this / when to avoid it</li></ul>",
-"medical_disclaimer":"A clear disclaimer telling the user this is educational only and to consult a qualified doctor/pharmacist before use. Plain text, 1-2 sentences.",
-"faq":[{"q":"What is {$productName} used for?","a":"..."},{"q":"How should {$productName} be taken?","a":"General guidance only, advise consulting a doctor."},{"q":"What are the common side effects?","a":"..."},{"q":"Is a prescription required for {$productName}?","a":"..."}],
+"how_it_works":"<p>Plain-language explanation of what the medicine does in the body, followed by one sentence of precise clinical mechanism. Empty string if unsure.</p>",
+"side_effects":"<p>Most people tolerate this medicine well. Side effects are usually mild and settle as the body adjusts.</p><h4>Common side effects</h4><ul><li>common effect — short note on managing it</li><li>second common effect</li><li>third common effect</li></ul><h4>Seek medical help immediately if you notice</h4><ul><li>serious effect needing urgent care</li><li>second serious effect</li></ul>",
+"contraindications":"<ul><li><strong>Allergy:</strong> who must avoid it</li><li><strong>Pregnancy &amp; breastfeeding:</strong> accurate guidance</li><li><strong>Existing conditions:</strong> liver/kidney/cardiac cautions that apply</li><li><strong>Drug interactions:</strong> the key interacting medicines</li><li><strong>Alcohol:</strong> accurate guidance</li></ul>",
+"medical_disclaimer":"A clear disclaimer telling the user this is educational only and to consult a qualified doctor/pharmacist before use. Plain text, 1-2 sentences. This field must NEVER be empty.",
+"faq":[{"q":"What is {$productName} used for?","a":"2-3 full sentences."},{"q":"How should {$productName} be taken?","a":"General guidance only, and advise consulting a doctor. 2-3 sentences."},{"q":"What are the common side effects of {$productName}?","a":"2-3 sentences."},{"q":"Is a prescription required for {$productName}?","a":"2-3 sentences."},{"q":"How long does {$productName} take to work?","a":"2-3 sentences, or say it varies and depends on the condition being treated."},{"q":"Can {$productName} be taken with other medicines?","a":"2-3 sentences pointing to a doctor or pharmacist for an interaction check."}],
 "manufacturer":"Real manufacturer company name (NOT guessed)",
 "storage_conditions":"Specific storage requirements",
-"meta_title":"Buy {$productName} Online | Medinova Pharma",
-"meta_description":"SEO description under 155 characters for {$productName}",
+"meta_title":"Title of 50-60 characters that starts with {$productName}, adds its main use or strength, and ends with ' | Medinova Pharma'. Must NOT be empty.",
+"meta_description":"Compelling 140-155 character SEO description that uses {$productName} in the first few words, states what it treats, and closes with a benefit such as genuine medicines or fast delivery. Must NOT be empty.",
 "unit":"strip|bottle|tube|box|sachet|vial (pick most appropriate)",
 "weight":number (net weight of ONE saleable unit as a plain number, e.g. a strip of tablets is usually 5-20),
 "weight_unit":"g|ml|mg (use 'g' for tablets/strips/capsules, 'ml' for syrups/liquids)",
@@ -370,6 +429,20 @@ PROMPT;
 
         if (empty(trim($d['medical_disclaimer'] ?? ''))) {
             $issues[] = 'Medical disclaimer is missing.';
+        }
+
+        // The description is the page body — thin copy is a YMYL/SEO problem.
+        $words = str_word_count(strip_tags((string) ($d['description'] ?? '')));
+        if ($words < 200) {
+            $issues[] = "Description is too thin ({$words} words, expected 200+).";
+        }
+
+        if (empty(trim($d['meta_title'] ?? ''))) {
+            $issues[] = 'Meta title is missing.';
+        }
+
+        if (empty(trim($d['meta_description'] ?? ''))) {
+            $issues[] = 'Meta description is missing.';
         }
 
         return $issues;

@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', $product->name)
+@section('title', $product->meta_title ?: $product->name)
 @section('meta_description', \Illuminate\Support\Str::limit(strip_tags($product->meta_description ?: ($product->short_description ?? $product->name)), 155))
 
 @push('head')
@@ -67,8 +67,8 @@
 @endphp
 <link rel="canonical" href="{{ $canonical }}">
 <meta property="og:type" content="product">
-<meta property="og:title" content="{{ $product->name }}">
-<meta property="og:description" content="{{ $ldDesc }}">
+<meta property="og:title" content="{{ $product->meta_title ?: $product->name }}">
+<meta property="og:description" content="{{ $product->meta_description ? \Illuminate\Support\Str::limit(strip_tags($product->meta_description), 200) : $ldDesc }}">
 <meta property="og:image" content="{{ $product->thumbnail_url }}">
 <meta property="og:url" content="{{ $canonical }}">
 @foreach($graph as $ld)
@@ -400,12 +400,20 @@
 
         <div class="tab-content py-4">
             <div class="tab-pane fade show active" id="pane-desc" role="tabpanel">
-                <div style="max-width:900px; line-height:1.8; color:#636363;">
+                <div class="mn-prose" style="max-width:900px; line-height:1.8; color:#636363;">
                     @php
                         $allowedTags = '<h1><h2><h3><h4><h5><h6><p><ul><ol><li><a><strong><b><em><i><br><hr><blockquote><span><div><table><thead><tbody><tr><th><td><img><sup><sub><code><pre>';
+                        // AI descriptions end with their own disclaimer block. The page
+                        // already renders one below the tabs, so drop the inline copy —
+                        // otherwise it lands mid-tab, above "How it works".
+                        $bodyHtml = preg_replace(
+                            '/<div[^>]*class="[^"]*medical-disclaimer[^"]*"[^>]*>.*?<\/div>/is',
+                            '',
+                            (string) $product->description
+                        );
                     @endphp
-                    @if($product->description)
-                        {!! strip_tags($product->description, $allowedTags) !!}
+                    @if(trim(strip_tags($bodyHtml)) !== '')
+                        {!! strip_tags($bodyHtml, $allowedTags) !!}
                     @else
                         <p class="text-muted">No detailed description available.</p>
                     @endif
@@ -576,6 +584,42 @@
         padding: 15px 18px; border-left: 4px solid #ef4444;
         background-color: #fef2f2; color: #b91c1c;
         font-size: 13px; line-height: 1.6; border-radius: 6px;
+    }
+
+    /* ── Rich product copy (AI-generated or hand-written) ── */
+    .mn-prose h2 {
+        font-size: 22px; font-weight: 800; color: #303030;
+        margin: 0 0 14px; padding-bottom: 10px; border-bottom: 2px solid #f3f4f6;
+    }
+    .mn-prose h3 {
+        font-size: 18px; font-weight: 700; color: #303030;
+        margin: 28px 0 12px; padding-left: 12px; border-left: 4px solid #e61f7f;
+    }
+    .mn-prose h4 { font-size: 15.5px; font-weight: 700; color: #4b5563; margin: 18px 0 8px; }
+    .mn-prose p  { margin-bottom: 14px; font-size: 15px; }
+    .mn-prose ul, .mn-prose ol { padding-left: 0; margin-bottom: 16px; list-style: none; }
+    .mn-prose ol { counter-reset: mn-step; }
+    .mn-prose li { position: relative; padding-left: 26px; margin-bottom: 9px; font-size: 15px; }
+    .mn-prose ul > li::before {
+        content: ''; position: absolute; left: 4px; top: 11px;
+        width: 7px; height: 7px; border-radius: 50%; background: #e61f7f;
+    }
+    .mn-prose ol > li::before {
+        counter-increment: mn-step; content: counter(mn-step) '.';
+        position: absolute; left: 0; top: 0; color: #e61f7f; font-weight: 700;
+    }
+    .mn-prose li strong { color: #303030; }
+    .mn-prose table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14.5px; }
+    .mn-prose th, .mn-prose td { padding: 10px 14px; border: 1px solid #e5e7eb; text-align: left; }
+    .mn-prose th { background: #f8fafb; font-weight: 600; color: #303030; }
+    .mn-prose a { color: #e61f7f; text-decoration: none; }
+    .mn-prose a:hover { text-decoration: underline; }
+    .mn-prose > *:first-child { margin-top: 0; }
+    @media (max-width: 575.98px) {
+        .mn-prose h2 { font-size: 19px; }
+        .mn-prose h3 { font-size: 16.5px; }
+        .mn-prose table { font-size: 13.5px; }
+        .mn-prose th, .mn-prose td { padding: 8px 10px; }
     }
     .mn-faq .accordion-button:not(.collapsed) { color:#e61f7f; background:#fff5fa; box-shadow:none; }
     .mn-faq .accordion-button:focus { box-shadow:none; border-color:#f3c6dc; }
