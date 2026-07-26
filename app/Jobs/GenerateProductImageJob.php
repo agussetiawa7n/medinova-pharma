@@ -59,14 +59,28 @@ class GenerateProductImageJob implements ShouldQueue
                 throw new \Exception("Image file not created at: {$fullPath}");
             }
 
+            // Say how the picture was produced. "A real photo of the box" and
+            // "packaging the model invented from a description" are wildly
+            // different things to publish, and both used to be reported simply
+            // as the model name.
+            $provenance = $rawImage ? $aiService->lastImageSource() : null;
+
+            $note = match (true) {
+                (bool) $placeholderReason => 'Placeholder used — ' . Str::limit($placeholderReason, 250),
+                $provenance && str_starts_with($provenance, 'AI-invented')
+                    => 'Not a real product photo — ' . Str::limit($provenance, 250),
+                default => null,
+            };
+
             $item->update([
                 'image_path'       => $finalPath,
                 'image_raw_url'    => filter_var($imageSource, FILTER_VALIDATE_URL) ? $imageSource : null,
-                'image_model_used' => $rawImage ? \App\Models\Setting::get('ai.image_model', 'openai/gpt-5-image') : 'placeholder',
+                'image_model_used' => $rawImage
+                    ? \App\Models\Setting::get('ai.image_model', 'gpt-image-1-mini')
+                        . ($provenance ? ' · ' . Str::limit($provenance, 80) : '')
+                    : 'placeholder',
                 'status'           => 'completed',
-                'error_message'    => $placeholderReason
-                    ? 'Placeholder used — ' . Str::limit($placeholderReason, 250)
-                    : null,
+                'error_message'    => $note,
             ]);
 
             Log::info("AI image completed #{$this->queueItemId}: {$item->product_name}", ['path' => $finalPath]);

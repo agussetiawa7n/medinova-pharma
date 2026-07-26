@@ -22,9 +22,22 @@ class AIProductService
     /** Why the last generateImage() call produced nothing, for the caller to report. */
     private ?string $lastImageError = null;
 
+    /**
+     * How the last image was produced. The pipeline quietly falls back from
+     * "edit the real product photo" to "invent packaging from a text prompt",
+     * and the two look completely different to a customer — the admin needs to
+     * be able to tell which one they are looking at.
+     */
+    private ?string $lastImageSource = null;
+
     public function lastImageError(): ?string
     {
         return $this->lastImageError;
+    }
+
+    public function lastImageSource(): ?string
+    {
+        return $this->lastImageSource;
     }
 
     /**
@@ -356,6 +369,10 @@ PROMPT;
 
         $refPath    = null;
         $rawOutput  = null;
+        $searchNote = null;
+
+        $this->lastImageError  = null;
+        $this->lastImageSource = null;
 
         // Resolved once and reused: the container hands back a fresh instance on
         // every app() call, so asking a second one for lastError() would always
@@ -366,20 +383,38 @@ PROMPT;
             // ── STEP 1+2: Search & download reference image ──
             if (\App\Models\Setting::get('ai.enable_image_search', '1') === '1') {
                 Log::info("Image pipeline: Searching reference for [{$productName}]");
-                $refPath = app(ImageSearchService::class)
-                    ->searchAndDownloadBest($productName, $slug);
+
+                $search  = app(ImageSearchService::class);
+                $refPath = $search->searchAndDownloadBest($productName, $slug);
+
+                $searchNote = $refPath
+                    ? 'reference: ' . ($search->lastSource() ?? 'search result')
+                    : ($search->lastError() ?? 'no reference image found');
+            } else {
+                $searchNote = 'image search disabled in AI Settings';
             }
 
             // ── STEP 3+4+5: Edit with reference OR pure generation ──
             if ($refPath) {
                 Log::info("Image pipeline: Editing with reference for [{$productName}]");
                 $rawOutput = $editService->editWithReference($refPath, $productName, $slug);
+
+                if ($rawOutput) {
+                    $this->lastImageSource = 'Edited from the real photo (' . $searchNote . ')';
+                }
             }
 
-            // Fallback: no reference or edit failed → locked-prompt generation
+            // Fallback: no reference or edit failed → locked-prompt generation.
+            // This invents packaging from a text description; it is NOT the real
+            // product, so the caller records it as such rather than letting it
+            // pass for a photo.
             if (!$rawOutput) {
                 Log::info("Image pipeline: Falling back to locked-prompt generation for [{$productName}]");
                 $rawOutput = $editService->generateWithLockedPrompt($productName, $slug);
+
+                if ($rawOutput) {
+                    $this->lastImageSource = 'AI-invented packaging — ' . $searchNote;
+                }
             }
 
         } catch (\Exception $e) {
