@@ -32,7 +32,7 @@ class AISettings extends Page
     public string $serpapi_key        = '';
     public bool   $enable_image_search = true;
     public float  $ai_temperature     = 0.3;
-    public int    $ai_max_tokens      = 2000;
+    public int    $ai_max_tokens      = 8000;
     public bool   $generate_images    = false;
     public bool $gen_description       = true;
     public bool $gen_short_description = true;
@@ -59,7 +59,7 @@ class AISettings extends Page
         $this->serpapi_key         = Setting::get('ai.serpapi_key', config('services.serpapi.key', '')) ?: '';
         $this->enable_image_search = Setting::get('ai.enable_image_search', '1') === '1';
         $this->ai_temperature      = (float) (Setting::get('ai.temperature', '0.7') ?: 0.7);
-        $this->ai_max_tokens       = (int) (Setting::get('ai.max_tokens', '2000') ?: 2000);
+        $this->ai_max_tokens       = (int) (Setting::get('ai.max_tokens', '8000') ?: 8000);
         $this->generate_images     = Setting::get('ai.generate_images', '1') === '1';
         foreach (['description', 'short_description', 'price', 'compare_price', 'category', 'brand', 'tags',
                      'composition', 'manufacturer', 'storage', 'sku', 'meta_title', 'meta_description', 'unit', 'weight'] as $f) {
@@ -113,8 +113,13 @@ class AISettings extends Page
             Section::make('Parameters')->schema([
                 Forms\Components\TextInput::make('ai_temperature')->label('Temperature (0=focused, 2=creative)')
                     ->numeric()->minValue(0)->maxValue(2)->step(0.1)->default(0.7),
+                // 2000 was too small for the YMYL product payload (description,
+                // how_it_works, side_effects, contraindications and the FAQ set),
+                // so every response was cut off mid-JSON and the item failed with
+                // "Control character error". 8192 is DeepSeek's output ceiling.
                 Forms\Components\TextInput::make('ai_max_tokens')->label('Max Tokens')
-                    ->numeric()->minValue(500)->maxValue(2000)->default(2000),
+                    ->helperText('8000 recommended. Below ~6000 the full product payload gets truncated.')
+                    ->numeric()->minValue(500)->maxValue(8192)->default(8000),
             ])->columns(2),
             Section::make('Fields to Auto-Generate')->description('Toggle off to fill manually.')
                 ->schema([
