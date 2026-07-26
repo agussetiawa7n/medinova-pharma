@@ -185,6 +185,12 @@
                         ▶ Start Worker
                     </button>
                     @endif
+                    <button wire:click="clearStuck" wire:loading.attr="disabled" wire:target="clearStuck" type="button"
+                        title="Unstick items whose worker died, delete duplicate rows for the same name, and re-queue failed items."
+                        style="padding:6px 14px; border-radius:8px; border:none; font-size:12px; font-weight:700; cursor:pointer; background:#fbbf24; color:#78350f;">
+                        <span wire:loading.remove wire:target="clearStuck">🧹 Clear Stuck</span>
+                        <span wire:loading wire:target="clearStuck">Cleaning…</span>
+                    </button>
                     <button wire:click="restartQueueWorker" type="button" style="padding:6px 14px; border-radius:8px; border:none; font-size:12px; font-weight:600; cursor:pointer; background:rgba(255,255,255,0.15); color:#fff; backdrop-filter:blur(4px);">
                         🔄 Restart
                     </button>
@@ -277,6 +283,10 @@
                     <button wire:click="regenerateImage({{ $item['id'] }})" type="button" style="padding:6px 12px; border-radius:8px; border:1px solid #e5e7eb; background:#fff; color:#6b7280; font-size:12px; cursor:pointer;">🖼 Image</button>
                 @endif
                 <button wire:click="skipProduct({{ $item['id'] }})" type="button" style="padding:6px 12px; border-radius:8px; border:1px solid #e5e7eb; background:#fff; color:#9ca3af; font-size:12px; cursor:pointer;">Skip</button>
+                <button wire:click="deleteItem({{ $item['id'] }})" type="button"
+                    onclick="return confirm('Remove this card from the batch? The generated text is discarded.')"
+                    title="Remove this row — use it to drop a duplicate."
+                    style="padding:6px 12px; border-radius:8px; border:1px solid #fecaca; background:#fff; color:#dc2626; font-size:12px; cursor:pointer;">Remove</button>
                 <button wire:click="approveProduct({{ $item['id'] }})" type="button" style="padding:6px 16px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; {{ $approved?'background:#22c55e; color:#fff; border:none;':'background:#fff; color:#16a34a; border:2px solid #4ade80;' }}">
                     {{ $approved?'✓ Approved':'Approve' }}
                 </button>

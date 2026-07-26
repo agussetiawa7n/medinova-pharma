@@ -190,24 +190,52 @@ class AIGenerateProducts extends Page
             return;
         }
 
-        // Clean old non-approved items for these names of the current type
+        // Drop previous attempts for these names, but ONLY the ones the admin has
+        // not acted on. Anything already approved is deliberately left alone.
         AIProductQueue::whereIn('product_name', $this->parsedNames)
             ->where('type', $this->generationType)
             ->whereNull('approved_by')
             ->delete();
 
-        // Create all queue items as 'pending'
-        $items = [];
-        foreach ($this->parsedNames as $name) {
-            $items[] = AIProductQueue::create([
+        // ...which is exactly why an approved row must also block a re-generate.
+        // Without this the delete above skipped it and a second row was created
+        // for the same name, so the product appeared twice with two different
+        // AI results and two API calls were paid for.
+        $alreadyApproved = AIProductQueue::whereIn('product_name', $this->parsedNames)
+            ->where('type', $this->generationType)
+            ->whereNotNull('approved_by')
+            ->pluck('product_name')
+            ->all();
+
+        $toGenerate = array_values(array_diff($this->parsedNames, $alreadyApproved));
+
+        if (empty($toGenerate)) {
+            Notification::make()
+                ->title('Nothing to generate')
+                ->body('Every name in this batch is already generated and approved. Use "Regenerate" on a card to redo one.')
+                ->warning()
+                ->send();
+            return;
+        }
+
+        foreach ($toGenerate as $name) {
+            AIProductQueue::create([
                 'product_name' => $name,
                 'type'         => $this->generationType,
-                'status'       => 'pending'
+                'status'       => 'pending',
             ]);
         }
 
+        if ($skipped = count($alreadyApproved)) {
+            Notification::make()
+                ->title("Skipped {$skipped} already-approved item(s)")
+                ->body(implode(', ', $alreadyApproved))
+                ->info()
+                ->send();
+        }
+
         $this->isGenerating   = true;
-        $this->totalCount     = count($this->parsedNames);
+        $this->totalCount     = count($toGenerate);
         $this->completedCount = 0;
         $this->workerStatus   = 'running';
         $this->currentStep    = 2;
@@ -282,16 +310,19 @@ class AIGenerateProducts extends Page
             return;
         }
 
-        $name = $active['product_name'];
+        $name   = $active['product_name'];
         $status = $active['status'];
+        $left   = collect($this->queueItems)
+            ->whereIn('status', ['pending', 'generating', 'text_generated'])->count();
 
-        if ($status === 'generating') {
-            $this->currentTask = "📝 Generating text for \"{$name}\"";
-        } elseif ($status === 'text_generated') {
-            $this->currentTask = "🖼️ Generating image for \"{$name}\"";
-        } else {
-            $this->currentTask = "⏳ Waiting in queue: \"{$name}\"";
-        }
+        // Spell out which of the two steps is running and how much is left. One
+        // product = one text call then one image call, each its own request, so
+        // "generating" on its own told the admin very little.
+        $this->currentTask = match ($status) {
+            'generating'      => "📝 Step 1 of 2 — writing content for \"{$name}\" · {$left} item(s) left",
+            'text_generated'  => "🖼️ Step 2 of 2 — creating image for \"{$name}\" · {$left} item(s) left",
+            default           => "⏳ Queued: \"{$name}\" · {$left} item(s) left — runs automatically, you can close this page",
+        };
 
         // Elapsed time since the item last changed. Carbon 3 returns a SIGNED
         // float here, which is why the page was showing "-586.828076s".
@@ -311,10 +342,11 @@ class AIGenerateProducts extends Page
         $pendingItems    = collect($this->queueItems)->whereIn('status', ['pending'])->count();
         $processingItems = collect($this->queueItems)->whereIn('status', ['generating', 'text_generated'])->count();
 
-        // Check if any queue item has been stuck (updated > 5 mins ago but not completed)
-        // Use 5 min threshold since image generation can take 2-3 min on shared hosting
-        $staleItems = AIProductQueue::whereIn('status', ['generating'])
-            ->where('updated_at', '<', now()->subMinutes(5))
+        // Anything claimed longer ago than the processor's own lock TTL is not
+        // running any more — its request was killed. Match that number rather
+        // than keeping a second, different threshold here.
+        $staleItems = AIProductQueue::where('status', 'generating')
+            ->where('updated_at', '<', now()->subMinutes(AIQueueProcessor::LOCK_TTL_MINUTES))
             ->count();
 
         if ($processingItems > 0) {
@@ -485,6 +517,86 @@ class AIGenerateProducts extends Page
     {
         AIProductQueue::findOrFail($queueId)->update(['status' => 'skipped']);
         $this->refreshQueueItems();
+    }
+
+    /** Remove a single card from the batch — useful for a duplicate or a dud. */
+    public function deleteItem(int $queueId): void
+    {
+        $item = AIProductQueue::findOrFail($queueId);
+        $name = $item->product_name;
+        $item->delete();
+
+        $this->refreshQueueItems();
+        $this->recountProgress();
+
+        Notification::make()->title("Removed \"{$name}\" from the batch")->success()->send();
+    }
+
+    /**
+     * One button for "something is wedged, sort it out".
+     *
+     * Covers the three states an admin cannot fix from the cards themselves:
+     * a row still marked `generating` after its worker died, duplicate rows for
+     * the same name, and failed rows that deserve another attempt.
+     */
+    public function clearStuck(): void
+    {
+        $processor = app(AIQueueProcessor::class);
+
+        // 1. Dead locks → back to pending (or failed once attempts run out).
+        $unstuck = $processor->reclaimStale();
+
+        // 2. Anything still claiming to be mid-generation with no live worker.
+        $unstuck += AIProductQueue::where('type', $this->generationType)
+            ->where('status', 'generating')
+            ->update([
+                'status'        => 'pending',
+                'locked_at'     => null,
+                'error_message' => null,
+            ]);
+
+        // 3. Duplicate rows for one name — keep the newest, drop the rest.
+        //    Approved rows are never touched; they are the admin's decision.
+        $removed = 0;
+        $groups = AIProductQueue::where('type', $this->generationType)
+            ->whereNull('approved_by')
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('product_name');
+
+        foreach ($groups as $rows) {
+            foreach ($rows->skip(1) as $duplicate) {
+                $duplicate->delete();
+                $removed++;
+            }
+        }
+
+        // 4. Give failed items a clean slate so the queue can pick them up.
+        $retried = AIProductQueue::where('type', $this->generationType)
+            ->where('status', 'failed')
+            ->update([
+                'status'        => 'pending',
+                'locked_at'     => null,
+                'retry_count'   => 0,
+                'error_message' => null,
+            ]);
+
+        $this->isGenerating = ($unstuck + $retried) > 0;
+        $this->refreshQueueItems();
+        $this->recountProgress();
+
+        Notification::make()
+            ->title('Queue cleaned up')
+            ->body("Unstuck: {$unstuck} · Duplicates removed: {$removed} · Re-queued: {$retried}")
+            ->success()
+            ->send();
+    }
+
+    private function recountProgress(): void
+    {
+        $this->totalCount     = count($this->queueItems);
+        $this->completedCount = collect($this->queueItems)
+            ->whereIn('status', ['completed', 'failed', 'skipped', 'saved'])->count();
     }
 
     /**
