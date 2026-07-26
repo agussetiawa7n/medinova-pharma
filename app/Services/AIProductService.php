@@ -107,13 +107,13 @@ YMYL & EEAT MEDICAL-CONTENT RULES (this is health content — accuracy protects 
 8. All medical content MUST be evidence-based, objective, and unbiased. No marketing hype, no exaggerated efficacy claims, no "miracle" language.
 9. If you are not certain about a clinical fact (side effect, contraindication, mechanism), OMIT it or return an empty value — do NOT invent it. An empty field is far safer than a wrong one.
 10. Never give individual dosing/medical advice; write at a general, educational level and always point the reader to a qualified doctor.
-11. MANDATORY — every single product MUST have a non-empty medical_disclaimer, AND the description HTML MUST end with the styled disclaimer <div> shown in the template. A product without a visible disclaimer is a compliance failure. Never skip it, never shorten it away.
+11. MANDATORY — every single product MUST have a non-empty medical_disclaimer. Do NOT write a disclaimer into the description; the application appends the approved, styled block itself so it is identical on every product.
 12. Use correct clinical terminology alongside plain-language explanations so content is both authoritative and accessible.
 13. Include a helpful, accurate faq with a minimum of 5 Q&A pairs, each answer 2-3 full sentences (not one-liners).
 
 HTML QUALITY & PRESENTATION RULES (the description is rendered directly on the storefront):
-14. The description must be rich, well-structured, scannable HTML — not a wall of plain text. Use <h2>/<h3> headings, short 2-3 sentence <p> paragraphs, <ul><li> bullets, a <table> of quick facts, and the styled callout <div>s given in the template.
-15. Copy the inline style="..." attributes from the template EXACTLY as written. They are what makes the page look designed rather than plain. Do not strip, rename or "simplify" them.
+14. The description must be rich, well-structured, scannable HTML — not a wall of plain text. Use <h2>/<h3> headings, short 2-3 sentence <p> paragraphs, <ul><li> bullets and a <table> of quick facts.
+15. Emit PLAIN semantic HTML with NO style, class or id attributes. The storefront stylesheet already formats these tags. Inline CSS is pure wasted output and is the main reason a reply gets truncated before the JSON closes.
 16. Aim for 450-700 words in the description. Substantial and genuinely useful — never padded with filler or repeated sentences.
 17. NEVER put "Side Effects", "Precautions", "Contraindications" or "How it works / Mechanism of Action" sections inside the description. Those live in their own dedicated fields (side_effects, contraindications, how_it_works) and are rendered separately — repeating them in the description creates duplicate content that hurts SEO.
 18. SEO: use the exact product name in the first sentence, in the first <h2>, and naturally 3-5 times overall. Write for humans first — no keyword stuffing.
@@ -289,8 +289,11 @@ IMPORTANT INSTRUCTIONS:
 - SKU format: MED-{first 3 letters of brand}-{strength numbers}, e.g., MED-MAL-100
 
 DESCRIPTION RULES (most important field — this is the page body customers read):
-- Follow the HTML skeleton below section-for-section, keeping every inline style="..." exactly as written.
-- Replace only the placeholder text; keep the headings, table, callout boxes and the closing disclaimer block.
+- Follow the HTML skeleton below section-for-section.
+- Output PLAIN semantic HTML only. Do NOT add style, class or id attributes — the
+  site stylesheet handles all appearance. Emitting inline CSS wastes the response
+  budget and gets the reply cut off mid-JSON.
+- Do NOT write a medical disclaimer here; the application appends the approved one.
 - 450-700 words total, written by a clinical pharmacist for a patient: clear, calm, factual, no marketing hype.
 - Do NOT add Side Effects / Precautions / Contraindications / Mechanism sections here — those are separate fields below.
 - If a fact is unknown (e.g. manufacturer), write "Not specified" in the table rather than inventing it.
@@ -299,7 +302,7 @@ Return this exact JSON structure:
 {
 "name":"{$productName}",
 "short_description":"2-3 sentence accurate medical summary of this specific product",
-"description":"<h2>About {$productName}</h2><p>2-3 sentence opening that names {$productName}, its active ingredient with strength, its drug class and what it treats.</p><p>A second short paragraph on who it is typically prescribed for and what a patient can realistically expect from the treatment.</p><h3>Quick Facts</h3><table style=\"width:100%;border-collapse:collapse;margin:16px 0;font-size:14.5px;\"><tbody><tr><th style=\"width:38%;text-align:left;padding:10px 14px;background:#f8fafb;border:1px solid #e5e7eb;font-weight:600;\">Active Ingredient</th><td style=\"padding:10px 14px;border:1px solid #e5e7eb;\">salt with strength</td></tr><tr><th style=\"text-align:left;padding:10px 14px;background:#f8fafb;border:1px solid #e5e7eb;font-weight:600;\">Drug Class</th><td style=\"padding:10px 14px;border:1px solid #e5e7eb;\">pharmacological class</td></tr><tr><th style=\"text-align:left;padding:10px 14px;background:#f8fafb;border:1px solid #e5e7eb;font-weight:600;\">Manufacturer</th><td style=\"padding:10px 14px;border:1px solid #e5e7eb;\">real manufacturer</td></tr><tr><th style=\"text-align:left;padding:10px 14px;background:#f8fafb;border:1px solid #e5e7eb;font-weight:600;\">Form &amp; Pack</th><td style=\"padding:10px 14px;border:1px solid #e5e7eb;\">e.g. Tablet, strip of 10</td></tr><tr><th style=\"text-align:left;padding:10px 14px;background:#f8fafb;border:1px solid #e5e7eb;font-weight:600;\">Prescription</th><td style=\"padding:10px 14px;border:1px solid #e5e7eb;\">Required / Not required</td></tr></tbody></table><h3>Key Benefits</h3><ul><li><strong>Short benefit label</strong> — one clear supporting sentence.</li><li><strong>Second benefit</strong> — supporting sentence.</li><li><strong>Third benefit</strong> — supporting sentence.</li><li><strong>Fourth benefit</strong> — supporting sentence.</li></ul><h3>What {$productName} Is Used For</h3><p>One short lead-in sentence.</p><ul><li>primary approved indication</li><li>second indication</li><li>third indication</li></ul><h3>How to Take {$productName}</h3><p>General guidance on timing, food and water — educational only, never a personal dose recommendation.</p><ul><li>When to take it (with or without food, time of day)</li><li>How to swallow it (whole with water, do not crush/chew if applicable)</li><li>How long a typical course runs and why it should be completed</li></ul><div style=\"margin:18px 0;padding:14px 18px;border-left:4px solid #e61f7f;background:#fff5fa;border-radius:6px;font-size:14px;line-height:1.7;color:#4b5563;\"><strong style=\"color:#e61f7f;\">Good to know:</strong> one genuinely useful practical tip about taking this medicine correctly.</div><h3>Missed Dose &amp; Overdose</h3><ul><li><strong>Missed dose:</strong> what to do, and the reminder never to double up.</li><li><strong>Overdose:</strong> advice to contact a doctor or emergency services immediately.</li></ul><h3>Storage &amp; Handling</h3><p>Specific storage temperature, light and moisture guidance, plus keeping it out of reach of children.</p><div class=\"medical-disclaimer\" style=\"margin-top:24px;padding:14px 18px;border-left:4px solid #ef4444;background:#fef2f2;color:#b91c1c;font-size:13px;line-height:1.6;border-radius:6px;\"><strong>Medical Disclaimer:</strong> The information about {$productName} on this page is for general educational purposes only and is not a substitute for professional medical advice, diagnosis or treatment. Always consult a qualified doctor or pharmacist before starting, stopping or changing any medication.</div>",
+"description":"<h2>About {$productName}</h2><p>2-3 sentence opening naming {$productName}, its active ingredient with strength, its drug class and what it treats.</p><p>A second short paragraph on who it is typically prescribed for and what a patient can realistically expect.</p><h3>Quick Facts</h3><table><tbody><tr><th>Active Ingredient</th><td>salt with strength</td></tr><tr><th>Drug Class</th><td>pharmacological class</td></tr><tr><th>Manufacturer</th><td>real manufacturer</td></tr><tr><th>Form &amp; Pack</th><td>e.g. Tablet, strip of 10</td></tr><tr><th>Prescription</th><td>Required / Not required</td></tr></tbody></table><h3>Key Benefits</h3><ul><li><strong>Short benefit label</strong> — one clear supporting sentence.</li><li><strong>Second benefit</strong> — supporting sentence.</li><li><strong>Third benefit</strong> — supporting sentence.</li><li><strong>Fourth benefit</strong> — supporting sentence.</li></ul><h3>What {$productName} Is Used For</h3><p>One short lead-in sentence.</p><ul><li>primary approved indication</li><li>second indication</li><li>third indication</li></ul><h3>How to Take {$productName}</h3><p>General guidance on timing, food and water — educational only, never a personal dose recommendation.</p><ul><li>When to take it (with or without food, time of day)</li><li>How to swallow it (whole with water, do not crush/chew if applicable)</li><li>How long a typical course runs and why it should be completed</li></ul><h3>Missed Dose &amp; Overdose</h3><ul><li><strong>Missed dose:</strong> what to do, and the reminder never to double up.</li><li><strong>Overdose:</strong> advice to contact a doctor or emergency services immediately.</li></ul><h3>Storage &amp; Handling</h3><p>Specific storage temperature, light and moisture guidance, plus keeping it out of reach of children.</p>",
 "price":float_USD,
 "compare_price":float_slightly_higher_than_price_USD,
 "category":"matched or accurately created category",
@@ -473,24 +476,110 @@ PROMPT;
 
     private function parseJson(string $content): array
     {
-        $content = preg_replace('/```json\s*/i', '', $content);
-        $content = preg_replace('/```\s*/i', '', $content);
-        $content = trim($content);
+        $json = $this->extractJsonBlock($content);
 
-        $data = json_decode($content, true);
-
-        // The model sometimes emits raw control characters (literal newlines/tabs
-        // inside HTML string values), which is invalid JSON. Strip control chars
-        // — 0x00–0x1F excluding nothing structural is safe here — and retry once.
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            $sanitized = preg_replace('/[\x00-\x1F]+/', ' ', $content);
-            $data = json_decode($sanitized, true);
+        // Attempt 1 — as returned.
+        $data = json_decode($json, true, 512, JSON_INVALID_UTF8_SUBSTITUTE);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($data)) {
+            return $data;
         }
 
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \Exception('Invalid JSON from AI: ' . json_last_error_msg());
+        // Attempt 2 — escape raw control characters that sit INSIDE string values.
+        // Models routinely emit literal newlines in long HTML fields, which is
+        // invalid JSON. The previous code deleted them, which both corrupted the
+        // text and failed to help, since a bare newline inside a string is only
+        // legal once escaped — not once replaced by a space in the raw byte
+        // stream that json_decode has already rejected.
+        $data = json_decode($this->escapeControlCharsInStrings($json), true, 512, JSON_INVALID_UTF8_SUBSTITUTE);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($data)) {
+            return $data;
         }
 
-        return $data;
+        $error = json_last_error_msg();
+
+        // A truncated response is the other common failure: the model ran into
+        // max_tokens mid-object. Say so explicitly instead of leaving the admin
+        // with a generic "Syntax error" they cannot act on.
+        if (!str_ends_with(rtrim($json), '}')) {
+            throw new \Exception(
+                'AI response was cut off before the JSON finished (likely the max_tokens limit). '
+                . 'Lower the amount of content requested or raise Max Tokens in AI Settings.'
+            );
+        }
+
+        Log::error('AI JSON parse failed', ['error' => $error, 'head' => Str::limit($json, 400)]);
+
+        throw new \Exception('Invalid JSON from AI: ' . $error);
+    }
+
+    /**
+     * Pull the outermost {...} object out of a raw completion, discarding
+     * markdown fences and any prose the model wrapped around it.
+     */
+    private function extractJsonBlock(string $content): string
+    {
+        $content = preg_replace('/^\s*```(?:json)?\s*/i', '', trim($content));
+        $content = preg_replace('/\s*```\s*$/', '', $content);
+
+        $start = strpos($content, '{');
+        $end   = strrpos($content, '}');
+
+        if ($start !== false && $end !== false && $end > $start) {
+            return substr($content, $start, $end - $start + 1);
+        }
+
+        return trim($content);
+    }
+
+    /**
+     * Walk the payload and escape control characters that appear inside string
+     * literals, leaving the JSON structure itself untouched. Tracks quoting and
+     * backslash escapes so a quote inside an already-escaped sequence does not
+     * flip the in-string state.
+     */
+    private function escapeControlCharsInStrings(string $json): string
+    {
+        $out       = '';
+        $inString  = false;
+        $escaped   = false;
+        $length    = strlen($json);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $json[$i];
+
+            if ($escaped) {
+                $out .= $char;
+                $escaped = false;
+                continue;
+            }
+
+            if ($char === '\\' && $inString) {
+                $out .= $char;
+                $escaped = true;
+                continue;
+            }
+
+            if ($char === '"') {
+                $inString = !$inString;
+                $out .= $char;
+                continue;
+            }
+
+            if ($inString && ord($char) < 0x20) {
+                $out .= match ($char) {
+                    "\n"    => '\\n',
+                    "\r"    => '\\r',
+                    "\t"    => '\\t',
+                    "\f"    => '\\f',
+                    "\x08"  => '\\b',
+                    default => sprintf('\\u%04x', ord($char)),
+                };
+                continue;
+            }
+
+            $out .= $char;
+        }
+
+        return $out;
     }
 }
