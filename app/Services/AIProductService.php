@@ -352,7 +352,7 @@ PROMPT;
 
     // ── IMAGE GENERATION PIPELINE ──
 
-    public function generateImage(string $productName): ?string
+    public function generateImage(string $productName, ?string $referenceUrl = null): ?string
     {
         if (\App\Models\Setting::get('ai.generate_images', '1') !== '1') {
             return null;
@@ -381,10 +381,19 @@ PROMPT;
 
         try {
             // ── STEP 1+2: Search & download reference image ──
-            if (\App\Models\Setting::get('ai.enable_image_search', '1') === '1') {
-                Log::info("Image pipeline: Searching reference for [{$productName}]");
+            $search = app(ImageSearchService::class);
 
-                $search  = app(ImageSearchService::class);
+            if ($referenceUrl) {
+                // An admin-supplied photo wins outright — no search, no guessing.
+                Log::info("Image pipeline: Using supplied reference for [{$productName}]");
+                $refPath = $search->downloadFrom($referenceUrl, $slug);
+
+                $searchNote = $refPath
+                    ? 'your reference: ' . ($search->lastSource() ?? 'supplied URL')
+                    : ($search->lastError() ?? 'supplied reference could not be used');
+
+            } elseif (\App\Models\Setting::get('ai.enable_image_search', '1') === '1') {
+                Log::info("Image pipeline: Searching reference for [{$productName}]");
                 $refPath = $search->searchAndDownloadBest($productName, $slug);
 
                 $searchNote = $refPath

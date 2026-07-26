@@ -346,6 +346,30 @@
             <strong>Image warning:</strong> {{ $item['error_message'] }}
         </div>
         @endif
+
+        @if($generationType === 'product')
+        {{-- Guaranteed real photo: search cannot always find an obscure brand,
+             and without a reference the model invents the packaging. --}}
+        <div style="margin:12px 20px 0; padding:12px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
+            <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.4px; margin-bottom:6px;">
+                Use a specific product photo
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <input type="url" wire:model.defer="referenceUrls.{{ $item['id'] }}"
+                    placeholder="Paste the image URL from indiamart.com (right-click the photo → Copy image address)"
+                    style="flex:1; min-width:260px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px;">
+                <button wire:click="useReferenceImage({{ $item['id'] }})" wire:loading.attr="disabled"
+                    wire:target="useReferenceImage({{ $item['id'] }})" type="button"
+                    style="padding:8px 16px; border-radius:8px; border:none; background:#0f172a; color:#fff; font-size:12.5px; font-weight:700; cursor:pointer;">
+                    <span wire:loading.remove wire:target="useReferenceImage({{ $item['id'] }})">Use this photo</span>
+                    <span wire:loading wire:target="useReferenceImage({{ $item['id'] }})">Working…</span>
+                </button>
+            </div>
+            @if(!empty($item['image_model_used']))
+            <div style="margin-top:8px; font-size:11.5px; color:#64748b;">Source: {{ $item['image_model_used'] }}</div>
+            @endif
+        </div>
+        @endif
         @if($generationType === 'category')
         <div style="display:flex; gap:16px; padding:20px; border-top:1px solid #f3f4f6;">
             <div style="flex:1; display:grid; grid-template-columns:1fr 1fr; gap:16px;">

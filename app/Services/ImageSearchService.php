@@ -4,7 +4,6 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 class ImageSearchService
 {
@@ -26,9 +25,12 @@ class ImageSearchService
         return $this->lastSource;
     }
 
+    /** How many candidates to try downloading before giving up. */
+    private const MAX_DOWNLOAD_ATTEMPTS = 5;
+
     /**
-     * Trusted pharmaceutical image sources only.
-     * Never use random Google Images blindly.
+     * Trusted pharmaceutical image sources, MOST PREFERRED FIRST.
+     * This order is now enforced when ranking candidates.
      */
     private const TRUSTED_DOMAINS = [
         'indiamart.com',       // ← FIRST PRIORITY: Best for Indian pharma
@@ -64,6 +66,46 @@ class ImageSearchService
     }
 
     /**
+     * Fetch one specific image the admin supplied, bypassing search entirely.
+     *
+     * Search is a best effort against a third party; for the cases where it
+     * cannot find the box, this is the deterministic way to still get the real
+     * photo in front of the model.
+     */
+    public function downloadFrom(string $url, string $slug): ?string
+    {
+        $this->lastError  = null;
+        $this->lastSource = null;
+
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            $this->lastError = 'That does not look like a valid image URL.';
+            return null;
+        }
+
+        $tempDir = str_replace('\\', '/', storage_path('app/temp'));
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
+        $path = $this->downloadImage($url, $tempDir, $slug, 0);
+
+        if (!$path) {
+            $this->lastError ??= 'Could not download that image URL.';
+            return null;
+        }
+
+        if (!$this->isValidImage($path)) {
+            @unlink($path);
+            $this->lastError = 'That image is too small to use as a reference.';
+            return null;
+        }
+
+        $this->lastSource = parse_url($url, PHP_URL_HOST) ?: $url;
+
+        return $path;
+    }
+
+    /**
      * Search for a pharmaceutical product image and download the best one.
      * Returns local temp file path or null if none found.
      */
@@ -90,67 +132,84 @@ class ImageSearchService
             return null;
         }
 
-        // Two candidates, not three. The whole image step shares one request against
-        // a 300s host cap, and 20s downloads plus a 200s Fal call could exceed it —
-        // the request was killed mid-flight and the row left stuck in `generating`.
-        $downloaded = [];
-        $sourceOf   = [];
-        foreach (array_slice($candidates, 0, 2) as $index => $url) {
+        // Walk the candidates in priority order and stop at the first one that
+        // downloads AND validates. The old version downloaded a fixed two and
+        // then filtered, so if both happened to be blocked it gave up even
+        // though good candidates were sitting further down the list.
+        foreach (array_slice($candidates, 0, self::MAX_DOWNLOAD_ATTEMPTS) as $index => $url) {
             $path = $this->downloadImage($url, $tempDir, $slug, $index);
-            if ($path) {
-                $downloaded[] = $path;
-                $sourceOf[$path] = parse_url($url, PHP_URL_HOST) ?: $url;
+
+            if (!$path) {
+                continue;
             }
-        }
 
-        if (empty($downloaded)) {
-            $this->lastError ??= 'Every candidate image failed to download.';
-            Log::warning("ImageSearch: All candidates failed to download for [{$productName}]");
-            return null;
-        }
-
-        // Pick largest valid image (most likely to be highest quality)
-        $best = collect($downloaded)
-            ->filter(fn($p) => $this->isValidImage($p))
-            ->sortByDesc(fn($p) => filesize($p))
-            ->first();
-
-        // Clean up unused downloaded files
-        foreach ($downloaded as $path) {
-            if ($path !== $best && file_exists($path)) {
+            if (!$this->isValidImage($path)) {
                 @unlink($path);
+                $this->lastError = 'Reference image was too small to use.';
+                continue;
             }
+
+            $this->lastSource = parse_url($url, PHP_URL_HOST) ?: $url;
+            $this->lastError  = null;
+
+            Log::info("ImageSearch: Reference selected for [{$productName}]", [
+                'path'   => $path,
+                'size'   => filesize($path),
+                'source' => $this->lastSource,
+            ]);
+
+            return $path;
         }
 
-        if (!$best) {
-            $this->lastError = 'Downloaded reference images were too small to use.';
-            Log::warning("ImageSearch: No valid image passed local validation for [{$productName}]");
-            return null;
-        }
+        $this->lastError ??= 'No candidate image could be downloaded.';
+        Log::warning("ImageSearch: No usable reference for [{$productName}]: {$this->lastError}");
 
-        $this->lastSource = $sourceOf[$best] ?? null;
-        $this->lastError  = null;
-
-        Log::info("ImageSearch: Best image selected for [{$productName}]", [
-            'path'   => $best,
-            'size'   => filesize($best),
-            'source' => $this->lastSource,
-        ]);
-
-        return $best;
+        return null;
     }
 
     /**
-     * Call SerpAPI to get image URLs.
+     * Collect image URLs, best source first.
+     *
+     * Runs progressively broader queries and stops as soon as a pass yields
+     * results from a trusted pharmacy site. A single query of
+     * '"name" pharmaceutical packaging India medicine' returned almost nothing
+     * for niche brands, and nothing ever aimed at IndiaMart specifically —
+     * which is the one source that reliably has the actual box.
      */
     private function searchCandidates(string $productName, string $key): array
+    {
+        $passes = [
+            '"' . $productName . '" site:indiamart.com',
+            '"' . $productName . '" medicine tablet packaging',
+            $productName . ' medicine',
+        ];
+
+        $best = [];
+
+        foreach ($passes as $query) {
+            [$trusted, $fallback] = $this->runSearchPass($query, $key, $productName);
+
+            if ($trusted) {
+                // A trusted hit is what we want; take it and stop paying for
+                // further searches.
+                return array_slice(array_merge($trusted, $fallback), 0, 8);
+            }
+
+            $best = $best ?: $fallback;
+        }
+
+        return array_slice($best, 0, 8);
+    }
+
+    /** One SerpAPI call. Returns [trustedUrls, untrustedUrls], best first. */
+    private function runSearchPass(string $query, string $key, string $productName): array
     {
         try {
             $response = Http::timeout(20)->get('https://serpapi.com/search', [
                 'engine'  => 'google_images',
-                'q'       => '"' . $productName . '" pharmaceutical packaging India medicine',
+                'q'       => $query,
                 'api_key' => $key,
-                'num'     => 10,
+                'num'     => 20,
                 'safe'    => 'active',
                 'ijn'     => '0',
             ]);
@@ -158,21 +217,17 @@ class ImageSearchService
             if (!$response->successful()) {
                 $this->lastError = "Image search API returned HTTP {$response->status()}.";
                 Log::error("SerpAPI error: " . $response->status() . " " . $response->body());
-                return [];
+                return [[], []];
             }
 
-            $results = $response->json('images_results', []);
-
-            // Filter by trusted domains first, then allow others as fallback
-            $trusted  = [];
+            $scored   = [];
             $fallback = [];
 
-            foreach ($results as $result) {
+            foreach ($response->json('images_results', []) as $result) {
                 // Keep BOTH URLs per result. 'original' points at the source
                 // site and is the good one, but it is exactly what gets
                 // hotlink-blocked; 'thumbnail' is SerpAPI's own copy and always
-                // serves. Taking only one of them meant a blocked site removed
-                // that result from consideration entirely.
+                // serves. Taking only one meant a blocked site dropped out.
                 $urls = array_values(array_filter(
                     [$result['original'] ?? null, $result['thumbnail'] ?? null],
                     fn ($u) => $u && filter_var($u, FILTER_VALIDATE_URL)
@@ -182,32 +237,49 @@ class ImageSearchService
                     continue;
                 }
 
-                $domain = parse_url($urls[0], PHP_URL_HOST) ?? '';
-                $isTrusted = collect(self::TRUSTED_DOMAINS)
-                    ->contains(fn($d) => str_contains($domain, $d));
+                // Rank by position in TRUSTED_DOMAINS, so IndiaMart (index 0)
+                // always outranks the rest. Previously the trusted bucket kept
+                // Google's own ordering, which made the constant's order — and
+                // IndiaMart's place at the top of it — purely decorative.
+                $rank = $this->trustRank((string) (parse_url($urls[0], PHP_URL_HOST) ?? ''));
 
                 foreach ($urls as $url) {
-                    if ($isTrusted) {
-                        $trusted[] = $url;
+                    if ($rank !== null) {
+                        $scored[] = ['rank' => $rank, 'url' => $url];
                     } else {
                         $fallback[] = $url;
                     }
                 }
             }
 
-            Log::info("ImageSearch: Found candidates for [{$productName}]", [
+            usort($scored, fn ($a, $b) => $a['rank'] <=> $b['rank']);
+            $trusted = array_column($scored, 'url');
+
+            Log::info("ImageSearch: pass for [{$productName}]", [
+                'query'    => $query,
                 'trusted'  => count($trusted),
                 'fallback' => count($fallback),
             ]);
 
-            // Prefer trusted domains, fallback if not enough
-            $all = array_merge($trusted, $fallback);
-            return array_slice($all, 0, 5);
+            return [$trusted, $fallback];
 
         } catch (\Exception $e) {
+            $this->lastError = 'Image search failed: ' . $e->getMessage();
             Log::error("SerpAPI exception: " . $e->getMessage());
-            return [];
+            return [[], []];
         }
+    }
+
+    /** Position in TRUSTED_DOMAINS (0 = most preferred), or null if untrusted. */
+    private function trustRank(string $host): ?int
+    {
+        foreach (array_values(self::TRUSTED_DOMAINS) as $index => $domain) {
+            if ($domain !== '' && str_contains($host, $domain)) {
+                return $index;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -222,7 +294,7 @@ class ImageSearchService
     private function downloadImage(string $url, string $tempDir, string $slug, int $index): ?string
     {
         try {
-            $response = Http::timeout(12)
+            $response = Http::timeout(8)
                 ->withHeaders([
                     'User-Agent'      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
                                        . '(KHTML, like Gecko) Chrome/125.0 Safari/537.36',

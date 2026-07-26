@@ -38,7 +38,7 @@ class GenerateProductImageJob implements ShouldQueue
         try {
             // Only call API if image generation is enabled
             if (\App\Models\Setting::get('ai.generate_images', '1') === '1') {
-                $rawImage = $aiService->generateImage($item->product_name);
+                $rawImage = $aiService->generateImage($item->product_name, $item->reference_url);
             } else {
                 $rawImage = null;
             }

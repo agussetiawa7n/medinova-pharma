@@ -11,7 +11,7 @@ class AIProductQueue extends Model
 
     protected $fillable = [
         'type', 'product_name', 'generated_data', 'image_path', 'image_raw_url',
-        'text_model_used', 'image_model_used', 'status', 'error_message',
+        'text_model_used', 'image_model_used', 'status', 'error_message', 'reference_url',
         'retry_count', 'locked_at', 'dedupe_key', 'approved_by', 'approved_at',
     ];
 

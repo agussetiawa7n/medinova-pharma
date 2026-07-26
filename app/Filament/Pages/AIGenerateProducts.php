@@ -697,6 +697,42 @@ class AIGenerateProducts extends Page
         $this->runSingleStep($item, 'Text regenerated');
     }
 
+    /** Reference photo URLs the admin typed, keyed by queue item id. */
+    public array $referenceUrls = [];
+
+    /**
+     * Point one item at a specific product photo and rebuild its image from it.
+     *
+     * The guaranteed path to a real picture: search may not find an obscure
+     * brand, and without a reference the model invents packaging. Pasting the
+     * IndiaMart (or any) image URL skips search entirely.
+     */
+    public function useReferenceImage(int $queueId): void
+    {
+        $url = trim((string) ($this->referenceUrls[$queueId] ?? ''));
+
+        if ($url === '') {
+            Notification::make()->title('Paste an image URL first.')->warning()->send();
+            return;
+        }
+
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            Notification::make()->title('That is not a valid URL.')->warning()->send();
+            return;
+        }
+
+        $item = AIProductQueue::findOrFail($queueId);
+        $item->update([
+            'reference_url' => $url,
+            'status'        => 'text_generated',
+            'image_path'    => null,
+            'locked_at'     => null,
+            'error_message' => null,
+        ]);
+
+        $this->runSingleStep($item->fresh(), 'Image rebuilt from your reference');
+    }
+
     public function regenerateImage(int $queueId): void
     {
         $item = AIProductQueue::findOrFail($queueId);
