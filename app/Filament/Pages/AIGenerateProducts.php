@@ -982,6 +982,11 @@ class AIGenerateProducts extends Page
                 'weight'                => $d['weight'] ?? null,
                 'weight_unit'           => $d['weight_unit'] ?? 'g',
                 'requires_prescription' => $d['requires_prescription'] ?? false,
+                // Never set before, so every AI product inherited the column
+                // default of 0 and went live out of stock. Configurable under
+                // AI Settings → Product Defaults.
+                'stock_quantity'        => (int) \App\Models\Setting::get('ai.default_stock', '100'),
+                'low_stock_threshold'   => (int) \App\Models\Setting::get('ai.default_low_stock', '5'),
                 'thumbnail'             => $item->image_path,
                 'content_status'        => $needsReview ? 'needs_review' : 'published',
                 // Content that failed validation stays hidden from the storefront

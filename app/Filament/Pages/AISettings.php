@@ -33,6 +33,8 @@ class AISettings extends Page
     public bool   $enable_image_search = true;
     public float  $ai_temperature     = 0.3;
     public int    $ai_max_tokens      = 8000;
+    public int    $default_stock      = 100;
+    public int    $default_low_stock  = 5;
     public bool   $generate_images    = false;
     public bool $gen_description       = true;
     public bool $gen_short_description = true;
@@ -60,6 +62,8 @@ class AISettings extends Page
         $this->enable_image_search = Setting::get('ai.enable_image_search', '1') === '1';
         $this->ai_temperature      = (float) (Setting::get('ai.temperature', '0.7') ?: 0.7);
         $this->ai_max_tokens       = (int) (Setting::get('ai.max_tokens', '8000') ?: 8000);
+        $this->default_stock       = (int) (Setting::get('ai.default_stock', '100') ?? 100);
+        $this->default_low_stock   = (int) (Setting::get('ai.default_low_stock', '5') ?? 5);
         $this->generate_images     = Setting::get('ai.generate_images', '1') === '1';
         foreach (['description', 'short_description', 'price', 'compare_price', 'category', 'brand', 'tags',
                      'composition', 'manufacturer', 'storage', 'sku', 'meta_title', 'meta_description', 'unit', 'weight'] as $f) {
@@ -129,6 +133,18 @@ class AISettings extends Page
                     ->helperText('8000 recommended. Below ~6000 the full product payload gets truncated.')
                     ->numeric()->minValue(500)->maxValue(8192)->default(8000),
             ])->columns(2),
+            Section::make('Product Defaults')
+                ->description('Applied to every product saved from the AI generator.')
+                ->schema([
+                    // The generator never set this, so every AI product inherited
+                    // the column default of 0 and landed out of stock.
+                    Forms\Components\TextInput::make('default_stock')->label('Stock Quantity')
+                        ->numeric()->minValue(0)->maxValue(1000000)->default(100)
+                        ->helperText('New AI products start with this much stock.'),
+                    Forms\Components\TextInput::make('default_low_stock')->label('Low Stock Threshold')
+                        ->numeric()->minValue(0)->maxValue(100000)->default(5)
+                        ->helperText('Flag the product as low stock at or below this.'),
+                ])->columns(2),
             Section::make('Fields to Auto-Generate')->description('Toggle off to fill manually.')
                 ->schema([
                     Forms\Components\Toggle::make('gen_description')->label('Description')->default(true),
@@ -171,6 +187,8 @@ class AISettings extends Page
         Setting::set('ai.enable_image_search', $this->enable_image_search ? '1' : '0', 'ai');
         Setting::set('ai.temperature', (string) $this->ai_temperature, 'ai');
         Setting::set('ai.max_tokens', (string) $this->ai_max_tokens, 'ai');
+        Setting::set('ai.default_stock', (string) $this->default_stock, 'ai');
+        Setting::set('ai.default_low_stock', (string) $this->default_low_stock, 'ai');
         Setting::set('ai.generate_images', $this->generate_images ? '1' : '0', 'ai');
         foreach (['description', 'short_description', 'price', 'compare_price', 'category', 'brand', 'tags',
                      'composition', 'manufacturer', 'storage', 'sku', 'meta_title', 'meta_description', 'unit', 'weight'] as $f) {
