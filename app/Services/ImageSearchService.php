@@ -18,6 +18,14 @@ class ImageSearchService
     /** HTTP status of the most recent download attempt, for dead-host tracking. */
     private ?int $lastStatus = null;
 
+    /**
+     * The best real-product-photo URL that this SERVER cannot fetch but a
+     * browser can — e.g. an IndiaMart original behind the datacenter 444 block.
+     * Handed to the admin's browser so it downloads the photo from their own IP.
+     */
+    private ?string $lastCandidateUrl  = null;
+    private ?int    $lastCandidateRank = null;
+
     public function lastError(): ?string
     {
         return $this->lastError;
@@ -26,6 +34,11 @@ class ImageSearchService
     public function lastSource(): ?string
     {
         return $this->lastSource;
+    }
+
+    public function lastCandidateUrl(): ?string
+    {
+        return $this->lastCandidateUrl;
     }
 
     /** How many candidates to try downloading before giving up. */
@@ -195,6 +208,9 @@ class ImageSearchService
             return null;
         }
 
+        $this->lastCandidateUrl  = null;
+        $this->lastCandidateRank = null;
+
         $tempDir = str_replace('\\', '/', storage_path('app/temp'));
         if (!is_dir($tempDir)) {
             mkdir($tempDir, 0755, true);
@@ -328,7 +344,9 @@ class ImageSearchService
                 // own copy was even tried. Demote it behind the thumbnail.
                 $originalHost = (string) (parse_url((string) $original, PHP_URL_HOST) ?? '');
 
-                $ordered = ($original && $this->isServerBlocked($originalHost))
+                $originalBlocked = $original && $this->isServerBlocked($originalHost);
+
+                $ordered = $originalBlocked
                     ? [$thumbnail, $original]
                     : [$original, $thumbnail];
 
@@ -351,6 +369,16 @@ class ImageSearchService
                 // $urls[0] is now the engine's thumbnail on a Google domain,
                 // which would otherwise score as untrusted and lose the ranking.
                 $rank = $this->trustRank($originalHost ?: (string) (parse_url($urls[0], PHP_URL_HOST) ?? ''));
+
+                // Remember the best real photo the server itself can never get,
+                // so the browser can fetch it from the admin's IP. Only blocked
+                // hosts qualify — anything the server can download it already
+                // does, and does not need a client round-trip.
+                if ($originalBlocked && $rank !== null
+                    && ($this->lastCandidateRank === null || $rank < $this->lastCandidateRank)) {
+                    $this->lastCandidateUrl  = $original;
+                    $this->lastCandidateRank = $rank;
+                }
 
                 foreach ($urls as $url) {
                     if ($rank !== null) {

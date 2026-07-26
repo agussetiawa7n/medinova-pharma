@@ -561,6 +561,10 @@ class AIGenerateProducts extends Page
             $columns[] = 'category_id';
         }
 
+        if (AIProductQueue::supportsReferenceCandidateUrl()) {
+            $columns[] = 'reference_candidate_url';
+        }
+
         $this->queueItems = AIProductQueue::where('type', $this->generationType)
             ->whereIn('product_name', $this->parsedNames)
             ->select($columns)

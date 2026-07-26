@@ -373,6 +373,41 @@
         @endif
 
         @if($generationType === 'product')
+        {{-- Browser-fetched real photo.
+             SerpAPI found the actual box on IndiaMart, but this server is blocked
+             from downloading it (444 from the datacenter). The admin's browser is
+             NOT blocked and IndiaMart's CDN sends Access-Control-Allow-Origin:*,
+             so the photo is fetched here from the admin's own IP and the bytes are
+             uploaded — turning the server's AI-invented image into the real box.
+             Only shown while the current image is not already the real photo. --}}
+        @php
+            $candidateUrl = $item['reference_candidate_url'] ?? null;
+            $alreadyReal  = str_contains($item['image_model_used'] ?? '', 'real photo');
+        @endphp
+        @if($candidateUrl && !$alreadyReal)
+        <div wire:key="refgrab-{{ $item['id'] }}"
+             x-data="refGrab({{ $item['id'] }}, @js($candidateUrl))" x-init="maybeAuto()"
+             style="margin:12px 20px 0; padding:12px 16px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px;">
+            <div style="font-size:11px; font-weight:700; color:#1d4ed8; text-transform:uppercase; letter-spacing:.4px; margin-bottom:6px;">
+                📷 Real product photo found on IndiaMart
+            </div>
+            <p style="font-size:12.5px; color:#1e40af; margin:0 0 10px 0;">
+                Our server is blocked from downloading it, so your browser fetches it from your own connection.
+            </p>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <button type="button" @click="grab()" x-bind:disabled="busy"
+                    style="padding:8px 16px; border-radius:8px; border:none; background:#1d4ed8; color:#fff; font-size:12.5px; font-weight:700; cursor:pointer;"
+                    x-bind:style="busy ? 'opacity:.6; cursor:not-allowed;' : ''">
+                    <span x-show="!busy">⬇ Get the real photo</span>
+                    <span x-show="busy" x-cloak x-text="phase"></span>
+                </button>
+                <a x-bind:href="url" target="_blank" rel="noopener"
+                    style="font-size:11.5px; color:#3b82f6; text-decoration:underline;">open the photo</a>
+                <span x-show="error" x-cloak x-text="error" style="font-size:11.5px; color:#dc2626;"></span>
+            </div>
+        </div>
+        @endif
+
         {{-- Guaranteed real photo: search cannot always find an obscure brand,
              and without a reference the model invents the packaging. --}}
         <div style="margin:12px 20px 0; padding:12px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
@@ -545,4 +580,79 @@
 @keyframes pulse-dot{0%{opacity:1;transform:scale(1)}50%{opacity:0;transform:scale(2)}100%{opacity:0;transform:scale(2.5)}}
 [x-cloak]{display:none !important}
 </style>
+
+<script>
+    // Fetch the real product photo from the ADMIN'S IP.
+    //
+    // The server (Hostinger datacenter) is answered with HTTP 444 by IndiaMart's
+    // CDN, but the browser is not — and the CDN sends Access-Control-Allow-Origin:*,
+    // so JS can read the bytes cross-origin. We fetch here, hand the blob to
+    // Livewire's upload channel, then ask the server to rebuild the image from it.
+    // The whole point is that the download happens on the user's connection.
+    window.__refGrabbed = window.__refGrabbed || new Set();
+
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('refGrab', (id, url) => ({
+            id,
+            url: (url || '').replace(/^http:\/\//i, 'https://'),
+            busy: false,
+            phase: 'Working…',
+            error: '',
+
+            // Auto-run at most once per item per page load, so opening the page
+            // silently upgrades AI-invented images to the real box. A manual
+            // button covers retries.
+            maybeAuto() {
+                if (window.__refGrabbed.has(this.id)) return;
+                this.grab();
+            },
+
+            async grab() {
+                if (this.busy) return;
+                window.__refGrabbed.add(this.id);
+                this.busy = true;
+                this.error = '';
+
+                try {
+                    this.phase = 'Downloading photo…';
+                    const controller = new AbortController();
+                    const timer = setTimeout(() => controller.abort(), 20000);
+
+                    const resp = await fetch(this.url, { mode: 'cors', signal: controller.signal, referrerPolicy: 'no-referrer' });
+                    clearTimeout(timer);
+
+                    if (!resp.ok) throw new Error('photo returned HTTP ' + resp.status);
+
+                    const blob = await resp.blob();
+                    if (!blob.type.startsWith('image/')) throw new Error('that URL was not an image');
+                    if (blob.size < 3000) throw new Error('photo was too small');
+
+                    const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+                    const file = new File([blob], 'reference.' + ext, { type: blob.type });
+
+                    this.phase = 'Uploading…';
+                    this.$wire.upload('referenceFiles.' + this.id, file,
+                        () => {                       // finished
+                            this.phase = 'Rebuilding image…';
+                            this.$wire.useReferenceUpload(this.id);
+                            // The card re-renders without this widget once the
+                            // image is the real photo; nothing else to reset.
+                        },
+                        () => {                       // error
+                            this.busy = false;
+                            this.error = 'Upload failed — try the manual upload below.';
+                        }
+                    );
+                } catch (e) {
+                    this.busy = false;
+                    // Let a manual retry through: a one-off network blip should
+                    // not permanently lock this item out of the auto path.
+                    window.__refGrabbed.delete(this.id);
+                    this.error = (e && e.message ? e.message : 'could not fetch the photo')
+                        + ' — use “Choose photo” below instead.';
+                }
+            },
+        }));
+    });
+</script>
 </x-filament-panels::page>

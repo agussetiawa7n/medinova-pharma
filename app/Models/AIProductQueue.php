@@ -12,7 +12,7 @@ class AIProductQueue extends Model
     protected $fillable = [
         'type', 'category_id', 'product_name', 'generated_data', 'image_path', 'image_raw_url',
         'text_model_used', 'image_model_used', 'status', 'error_message', 'reference_url',
-        'retry_count', 'locked_at', 'dedupe_key', 'approved_by', 'approved_at',
+        'reference_candidate_url', 'retry_count', 'locked_at', 'dedupe_key', 'approved_by', 'approved_at',
     ];
 
     /** Terminal states: kept as history, exempt from the live-row unique index. */
@@ -21,6 +21,8 @@ class AIProductQueue extends Model
     private static ?bool $hasDedupeKey = null;
 
     private static ?bool $hasCategoryId = null;
+
+    private static ?bool $hasReferenceCandidateUrl = null;
 
     private static function supportsDedupeKey(): bool
     {
@@ -40,6 +42,15 @@ class AIProductQueue extends Model
         return self::$hasCategoryId ??= \Illuminate\Support\Facades\Schema::hasColumn(
             (new static())->getTable(),
             'category_id'
+        );
+    }
+
+    /** Deploy-order guard for the browser-fetched reference photo column. */
+    public static function supportsReferenceCandidateUrl(): bool
+    {
+        return self::$hasReferenceCandidateUrl ??= \Illuminate\Support\Facades\Schema::hasColumn(
+            (new static())->getTable(),
+            'reference_candidate_url'
         );
     }
 

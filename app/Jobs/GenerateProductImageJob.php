@@ -72,7 +72,7 @@ class GenerateProductImageJob implements ShouldQueue
                 default => null,
             };
 
-            $item->update([
+            $update = [
                 'image_path'       => $finalPath,
                 'image_raw_url'    => filter_var($imageSource, FILTER_VALIDATE_URL) ? $imageSource : null,
                 'image_model_used' => $rawImage
@@ -81,7 +81,20 @@ class GenerateProductImageJob implements ShouldQueue
                     : 'placeholder',
                 'status'           => 'completed',
                 'error_message'    => $note,
-            ]);
+            ];
+
+            // Hand the browser a real photo to fetch when — and only when — the
+            // server produced something that is NOT the real photo (AI-invented
+            // or a low-res thumbnail) but the search found a full-res box on a
+            // host it cannot reach. On the admin's IP that URL downloads fine.
+            $candidate = $aiService->lastImageCandidateUrl();
+            $gotRealPhoto = $provenance && str_starts_with($provenance, 'Edited from the real photo');
+
+            if (AIProductQueue::supportsReferenceCandidateUrl()) {
+                $update['reference_candidate_url'] = ($candidate && ! $gotRealPhoto) ? $candidate : null;
+            }
+
+            $item->update($update);
 
             Log::info("AI image completed #{$this->queueItemId}: {$item->product_name}", ['path' => $finalPath]);
         } catch (\Exception $e) {

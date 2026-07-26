@@ -30,6 +30,13 @@ class AIProductService
      */
     private ?string $lastImageSource = null;
 
+    /**
+     * A real product photo the search located but this server is blocked from
+     * downloading (IndiaMart 444s the datacenter). Non-null means: the browser
+     * should fetch this from the admin's own IP and upload it for a real image.
+     */
+    private ?string $lastImageCandidateUrl = null;
+
     public function lastImageError(): ?string
     {
         return $this->lastImageError;
@@ -38,6 +45,11 @@ class AIProductService
     public function lastImageSource(): ?string
     {
         return $this->lastImageSource;
+    }
+
+    public function lastImageCandidateUrl(): ?string
+    {
+        return $this->lastImageCandidateUrl;
     }
 
     /**
@@ -395,8 +407,9 @@ PROMPT;
         $rawOutput  = null;
         $searchNote = null;
 
-        $this->lastImageError  = null;
-        $this->lastImageSource = null;
+        $this->lastImageError        = null;
+        $this->lastImageSource       = null;
+        $this->lastImageCandidateUrl = null;
 
         // Resolved once and reused: the container hands back a fresh instance on
         // every app() call, so asking a second one for lastError() would always
@@ -419,6 +432,10 @@ PROMPT;
             } elseif (\App\Models\Setting::get('ai.enable_image_search', '1') === '1') {
                 Log::info("Image pipeline: Searching reference for [{$productName}]");
                 $refPath = $search->searchAndDownloadBest($productName, $slug);
+
+                // The real photo the server is blocked from fetching. Surfaced so
+                // the caller can hand it to the browser to download instead.
+                $this->lastImageCandidateUrl = $search->lastCandidateUrl();
 
                 $searchNote = $refPath
                     ? 'reference: ' . ($search->lastSource() ?? 'search result')
