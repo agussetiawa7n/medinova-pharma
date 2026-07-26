@@ -12,6 +12,18 @@ class ImageEditService
 {
     private const FAL_BASE = 'https://fal.run';
 
+    /**
+     * Reason the last Fal.ai call produced no image. Previously each failure was
+     * only written to the log, so the admin saw a placeholder with no way to
+     * tell a missing API key from an out-of-credits account or a bad model name.
+     */
+    private ?string $lastError = null;
+
+    public function lastError(): ?string
+    {
+        return $this->lastError;
+    }
+
     private function apiKey(): string
     {
         return \App\Models\Setting::get('ai.fal_api_key', config('services.fal.api_key', ''));
@@ -75,12 +87,14 @@ class ImageEditService
                 ]);
 
             if (!$response->successful()) {
+                $this->lastError = "Fal.ai generation returned HTTP {$response->status()}: " . trim(substr($response->body(), 0, 200));
                 Log::warning("ImageEdit: Pure generation HTTP {$response->status()}: " . substr($response->body(), 0, 300));
                 return null;
             }
 
             $url = $response->json('images.0.url');
             if (!$url) {
+                $this->lastError = "Fal.ai generation succeeded but returned no image URL.";
                 Log::warning("ImageEdit: Pure generation returned no image URL");
                 return null;
             }
@@ -93,6 +107,7 @@ class ImageEditService
             return $rawPath;
 
         } catch (\Exception $e) {
+            $this->lastError = "Fal.ai generation failed: " . $e->getMessage();
             Log::error("ImageEdit: Pure generation failed for [{$productName}]: " . $e->getMessage());
             return null;
         }
@@ -155,12 +170,14 @@ class ImageEditService
                 ]);
 
             if (!$response->successful()) {
+                $this->lastError = "Fal.ai edit returned HTTP {$response->status()}: " . trim(substr($response->body(), 0, 200));
                 Log::warning("ImageEdit: Fal.ai edit HTTP {$response->status()}: " . substr($response->body(), 0, 300));
                 return null;
             }
 
             $url = $response->json('images.0.url');
             if (!$url) {
+                $this->lastError = "Fal.ai edit succeeded but returned no image URL.";
                 Log::warning("ImageEdit: Fal.ai edit returned no image URL");
                 return null;
             }
@@ -173,6 +190,7 @@ class ImageEditService
             return $rawPath;
 
         } catch (\Exception $e) {
+            $this->lastError = "Fal.ai edit failed: " . $e->getMessage();
             Log::warning("ImageEdit: Fal.ai edit exception: " . $e->getMessage());
             return null;
         }

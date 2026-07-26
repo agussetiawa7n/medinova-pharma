@@ -46,6 +46,11 @@ class GenerateProductImageJob implements ShouldQueue
             $imageSource = $rawImage ?: $placeholderUrl;
             $finalPath = $imageService->processAndSave($imageSource, $item->product_name);
 
+            // Falling back to the placeholder is not an error the workflow should
+            // block on, but the admin needs to know it happened and why —
+            // otherwise a grey box looks identical to a real product photo run.
+            $placeholderReason = $rawImage ? null : $aiService->lastImageError();
+
             // Verify the file was actually created
             $fullPath = storage_path('app/public/' . $finalPath);
             if (!file_exists($fullPath)) {
@@ -57,6 +62,9 @@ class GenerateProductImageJob implements ShouldQueue
                 'image_raw_url'    => filter_var($imageSource, FILTER_VALIDATE_URL) ? $imageSource : null,
                 'image_model_used' => $rawImage ? \App\Models\Setting::get('ai.image_model', 'openai/gpt-5-image') : 'placeholder',
                 'status'           => 'completed',
+                'error_message'    => $placeholderReason
+                    ? 'Placeholder used — ' . Str::limit($placeholderReason, 250)
+                    : null,
             ]);
 
             Log::info("AI image completed #{$this->queueItemId}: {$item->product_name}", ['path' => $finalPath]);

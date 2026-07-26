@@ -19,6 +19,14 @@ class AIProductService
      */
     private const DEFAULT_DISCLAIMER = 'The information on this page is for general educational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified doctor or pharmacist before starting, stopping, or changing any medication.';
 
+    /** Why the last generateImage() call produced nothing, for the caller to report. */
+    private ?string $lastImageError = null;
+
+    public function lastImageError(): ?string
+    {
+        return $this->lastImageError;
+    }
+
     /**
      * Inline-styled disclaimer block appended to the description HTML.
      * Inline styles (not just a class) so it stays visible in the admin
@@ -348,6 +356,11 @@ PROMPT;
         $refPath    = null;
         $rawOutput  = null;
 
+        // Resolved once and reused: the container hands back a fresh instance on
+        // every app() call, so asking a second one for lastError() would always
+        // report null.
+        $editService = app(ImageEditService::class);
+
         try {
             // ── STEP 1+2: Search & download reference image ──
             if (\App\Models\Setting::get('ai.enable_image_search', '1') === '1') {
@@ -357,8 +370,6 @@ PROMPT;
             }
 
             // ── STEP 3+4+5: Edit with reference OR pure generation ──
-            $editService = app(ImageEditService::class);
-
             if ($refPath) {
                 Log::info("Image pipeline: Editing with reference for [{$productName}]");
                 $rawOutput = $editService->editWithReference($refPath, $productName, $slug);
@@ -371,6 +382,7 @@ PROMPT;
             }
 
         } catch (\Exception $e) {
+            $this->lastImageError = $e->getMessage();
             Log::error("Image pipeline exception for [{$productName}]: " . $e->getMessage());
         } finally {
             // ── STEP 9: Always clean up reference temp file ──
@@ -380,8 +392,17 @@ PROMPT;
         }
 
         if (!$rawOutput) {
-            Log::warning("Image pipeline: All methods failed for [{$productName}], using placeholder");
-            return $this->placeholderImage($productName);
+            // Return null rather than a placeholder URL. The caller already has
+            // its own placeholder fallback, and handing one back from here made
+            // the failure indistinguishable from success — the queue row was
+            // stamped with the real image model even though nothing was
+            // generated, and the reason never reached the admin.
+            $this->lastImageError ??= $editService->lastError()
+                ?? 'Image search and AI generation both returned nothing. Check the Fal.ai key and credits in AI Settings.';
+
+            Log::warning("Image pipeline: All methods failed for [{$productName}]: {$this->lastImageError}");
+
+            return null;
         }
 
         Log::info("Image pipeline: SUCCESS for [{$productName}]", ['raw' => $rawOutput]);
