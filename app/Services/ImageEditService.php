@@ -71,6 +71,12 @@ class ImageEditService
         $model   = $this->imageModel();
         $prompt  = $this->buildLockedGenerationPrompt($productName);
 
+        if (trim($this->apiKey()) === '') {
+            $this->lastError = 'No Fal.ai API key is configured. Add one under AI Settings → Fal.ai API.';
+            Log::warning('ImageEdit: skipped generation, Fal.ai API key is empty');
+            return null;
+        }
+
         Log::info("ImageEdit: Pure locked-prompt generation for [{$productName}] via Fal.ai using {$model}");
 
         try {

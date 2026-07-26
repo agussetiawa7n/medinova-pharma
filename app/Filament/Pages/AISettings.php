@@ -144,8 +144,17 @@ class AISettings extends Page
 
     public function save(): void
     {
-        Setting::set('ai.deepseek_api_key', $this->deepseek_api_key, 'ai');
-        Setting::set('ai.fal_api_key', $this->fal_api_key, 'ai');
+        // Only overwrite a stored credential when a new one was actually typed.
+        // These are password inputs, so an admin saving an unrelated setting can
+        // submit them blank — writing that through would silently wipe a working
+        // key and leave the next generation failing with a 401. serpapi_key was
+        // already guarded this way; the other two were not.
+        if (!empty($this->deepseek_api_key)) {
+            Setting::set('ai.deepseek_api_key', $this->deepseek_api_key, 'ai');
+        }
+        if (!empty($this->fal_api_key)) {
+            Setting::set('ai.fal_api_key', $this->fal_api_key, 'ai');
+        }
         Setting::set('ai.text_model', $this->text_model, 'ai');
         Setting::set('ai.image_model', $this->image_model, 'ai');
         if (!empty($this->serpapi_key)) {
