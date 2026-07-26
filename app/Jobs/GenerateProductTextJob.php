@@ -48,7 +48,15 @@ class GenerateProductTextJob implements ShouldQueue
                     'status'          => 'completed',
                 ]);
             } else {
-                $details = $aiService->generateProductDetails($item->product_name);
+                // A category pinned on the queue row is passed straight into
+                // the prompt, so the model writes for that category instead of
+                // choosing its own. Resolved by id — the stored name could have
+                // been edited between enqueue and generation.
+                $forcedCategory = $item->category_id
+                    ? \App\Models\Category::whereKey($item->category_id)->value('name')
+                    : null;
+
+                $details = $aiService->generateProductDetails($item->product_name, $forcedCategory);
 
                 $item->update([
                     'generated_data'  => $details,

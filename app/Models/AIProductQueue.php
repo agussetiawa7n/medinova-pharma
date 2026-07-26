@@ -10,7 +10,7 @@ class AIProductQueue extends Model
     protected $table = 'ai_product_queue';
 
     protected $fillable = [
-        'type', 'product_name', 'generated_data', 'image_path', 'image_raw_url',
+        'type', 'category_id', 'product_name', 'generated_data', 'image_path', 'image_raw_url',
         'text_model_used', 'image_model_used', 'status', 'error_message', 'reference_url',
         'retry_count', 'locked_at', 'dedupe_key', 'approved_by', 'approved_at',
     ];
@@ -20,11 +20,26 @@ class AIProductQueue extends Model
 
     private static ?bool $hasDedupeKey = null;
 
+    private static ?bool $hasCategoryId = null;
+
     private static function supportsDedupeKey(): bool
     {
         return self::$hasDedupeKey ??= \Illuminate\Support\Facades\Schema::hasColumn(
             (new static())->getTable(),
             'dedupe_key'
+        );
+    }
+
+    /**
+     * Same deploy-order guard as above: code reaches the server before its
+     * migration does, and selecting or writing a column that is not there yet
+     * turns the whole AI Generate page into a 500 until the cron catches up.
+     */
+    public static function supportsCategoryId(): bool
+    {
+        return self::$hasCategoryId ??= \Illuminate\Support\Facades\Schema::hasColumn(
+            (new static())->getTable(),
+            'category_id'
         );
     }
 

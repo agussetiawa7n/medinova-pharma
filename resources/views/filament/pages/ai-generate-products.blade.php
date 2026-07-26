@@ -60,6 +60,31 @@
             @endif
         </div>
 
+        {{-- Pin the category BEFORE generating. Left on "Let AI choose" the model
+             picks one per product, so a batch of near-identical items could end
+             up spread across three categories. --}}
+        @if($generationType === 'product')
+        <div style="background:#faf5ff; border:1px solid #e9d5ff; border-radius:12px; padding:14px 16px; margin-bottom:16px;">
+            <label for="batch-category" style="display:block; font-size:11px; font-weight:700; color:#7c3aed; text-transform:uppercase; letter-spacing:.4px; margin-bottom:6px;">
+                Category for this batch
+            </label>
+            <select id="batch-category" wire:model.live="targetCategoryId"
+                style="width:100%; padding:10px 12px; border:1px solid #d8b4fe; border-radius:10px; background:#fff; font-size:14px; color:#1f2937; box-sizing:border-box; cursor:pointer;">
+                <option value="">🤖 Let AI choose automatically</option>
+                @foreach($this->categoryOptions as $id => $name)
+                    <option value="{{ $id }}">{{ $name }}</option>
+                @endforeach
+            </select>
+            <p style="font-size:12px; color:#9333ea; margin:8px 0 0 0;">
+                @if($targetCategoryId !== '' && isset($this->categoryOptions[$targetCategoryId]))
+                    ✅ Every product in this batch will be saved under <strong>{{ $this->categoryOptions[$targetCategoryId] }}</strong>, and the AI is told to write for it.
+                @else
+                    The AI picks the closest existing category per product. Choose one above to pin the whole batch instead.
+                @endif
+            </p>
+        </div>
+        @endif
+
         <textarea wire:model="rawProductList" rows="6"
             placeholder="{{ $generationType === 'category' ? 'Diabetes Care&#10;Erectile Dysfunction&#10;Cardiovascular Health' : 'Paracetamol 500mg&#10;Ibuprofen 400mg&#10;Omeprazole 20mg' }}"
             style="width:100%; border:1px solid #e5e7eb; border-radius:12px; background:#f9fafb; padding:12px 16px; font-size:14px; font-family:monospace; resize:none; margin-bottom:16px; box-sizing:border-box;"></textarea>
@@ -412,7 +437,14 @@
                 </div>
                 <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:12px; padding:12px;">
                     <div style="font-size:11px; font-weight:700; color:#7c3aed; text-transform:uppercase; margin-bottom:4px;">Category</div>
-                    <div style="font-weight:600; color:#5b21b6; font-size:14px;">{{ $d['category']??'—' }}</div>
+                    {{-- Show what the product will actually be saved with. When a
+                         category was pinned it overrides the AI's answer at save
+                         time, so printing the AI's answer here would be a lie. --}}
+                    @php $pinnedCategory = empty($item['category_id']) ? null : ($this->categoryOptions[$item['category_id']] ?? null); @endphp
+                    <div style="font-weight:600; color:#5b21b6; font-size:14px;">{{ $pinnedCategory ?? ($d['category'] ?? '—') }}</div>
+                    @if($pinnedCategory)
+                        <div style="font-size:10px; font-weight:700; color:#7c3aed; margin-top:2px;">📌 PINNED BY YOU</div>
+                    @endif
                     <div style="font-size:12px; color:#a78bfa;">{{ $d['brand']??'—' }}</div>
                 </div>
                 <div style="background:#eef2ff; border:1px solid #c7d2fe; border-radius:12px; padding:12px;">

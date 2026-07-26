@@ -16,6 +16,7 @@ use Filament\Pages\Page;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Livewire\Attributes\Computed;
 use Livewire\WithFileUploads;
 
 class AIGenerateProducts extends Page
@@ -31,6 +32,14 @@ class AIGenerateProducts extends Page
     protected string $view = 'filament.pages.ai-generate-products';
 
     public string $generationType = 'product'; // 'product' or 'category'
+
+    /**
+     * Category pinned for the whole batch, chosen before generation starts.
+     *
+     * Empty string = let the AI pick per product (the old behaviour). Kept as a
+     * string because that is what an HTML <select> posts back.
+     */
+    public string $targetCategoryId = '';
 
     public string $rawProductList = '';
     public $csvFile   = null;
@@ -54,6 +63,18 @@ class AIGenerateProducts extends Page
     public string $imageModel = '';
     public bool $processingImage = false; // legacy flag kept for the blade; the real lock lives in the DB
 
+    /**
+     * Categories offered in the batch dropdown, id => name.
+     *
+     * Only real, existing rows: this feature exists so products stop landing in
+     * invented categories, so the picker must never be able to create one.
+     */
+    #[Computed]
+    public function categoryOptions(): array
+    {
+        return Category::query()->orderBy('name')->pluck('name', 'id')->all();
+    }
+
     public function mount(): void
     {
         // Restore state after a page refresh — the batch lives in the database.
@@ -72,6 +93,7 @@ class AIGenerateProducts extends Page
         $this->completedCount = 0;
         $this->isGenerating = false;
         $this->currentStep = 1;
+        $this->targetCategoryId = '';
 
         $this->restoreBatch($value);
     }
@@ -108,6 +130,10 @@ class AIGenerateProducts extends Page
 
         $this->parsedNames = $rows->pluck('product_name')->unique()->values()->all();
         $this->currentStep = 2;
+
+        // Put the dropdown back where the admin left it, so a page refresh
+        // mid-batch does not silently hand the next item back to the AI.
+        $this->targetCategoryId = (string) ($rows->first()->category_id ?? '');
 
         $this->refreshQueueItems();
         $this->recountProgress();
@@ -231,12 +257,36 @@ class AIGenerateProducts extends Page
             return;
         }
 
+        // Validate the pinned category against the database rather than trusting
+        // the posted value: the <select> is client-side, and a stale option (a
+        // category deleted in another tab) would otherwise be written onto every
+        // row in the batch.
+        $categoryId = null;
+        if ($this->generationType === 'product' && $this->targetCategoryId !== '' && AIProductQueue::supportsCategoryId()) {
+            $categoryId = Category::whereKey($this->targetCategoryId)->value('id');
+
+            if (!$categoryId) {
+                $this->targetCategoryId = '';
+                unset($this->categoryOptions);
+
+                Notification::make()
+                    ->title('That category no longer exists')
+                    ->body('Pick one again, or leave it on "Let AI choose".')
+                    ->warning()
+                    ->send();
+
+                return;
+            }
+        }
+
+        $attributes = ['type' => $this->generationType, 'status' => 'pending'];
+
+        if (AIProductQueue::supportsCategoryId()) {
+            $attributes['category_id'] = $categoryId;
+        }
+
         foreach ($toGenerate as $name) {
-            AIProductQueue::create([
-                'product_name' => $name,
-                'type'         => $this->generationType,
-                'status'       => 'pending',
-            ]);
+            AIProductQueue::create($attributes + ['product_name' => $name]);
         }
 
         if ($skipped = count($blocking)) {
@@ -505,9 +555,15 @@ class AIGenerateProducts extends Page
 
     private function refreshQueueItems(): void
     {
+        $columns = ['id', 'type', 'product_name', 'status', 'generated_data', 'image_path', 'error_message', 'approved_by', 'approved_at', 'updated_at', 'text_model_used', 'image_model_used'];
+
+        if (AIProductQueue::supportsCategoryId()) {
+            $columns[] = 'category_id';
+        }
+
         $this->queueItems = AIProductQueue::where('type', $this->generationType)
             ->whereIn('product_name', $this->parsedNames)
-            ->select('id', 'type', 'product_name', 'status', 'generated_data', 'image_path', 'error_message', 'approved_by', 'approved_at', 'updated_at', 'text_model_used', 'image_model_used')
+            ->select($columns)
             ->orderByRaw("FIELD(status, 'generating', 'pending', 'text_generated', 'completed', 'failed', 'skipped', 'saved')")
             ->get()
             ->toArray();
@@ -893,11 +949,17 @@ class AIGenerateProducts extends Page
                 }
             }
 
-            // Category whitelist: only match an EXISTING category. Never auto-create
-            // a new one from AI output (prevents junk categories like "Sexual Wellness").
+            // Category. The dropdown choice made before generation wins outright:
+            // it is a real id the admin picked, so there is nothing to match and
+            // nothing to hold for review. Only when no category was pinned do we
+            // fall back to matching whatever the model returned.
             $categoryId = null;
             $matchedCategory = false;
-            if (!empty($d['category'])) {
+
+            if ($item->category_id && Category::whereKey($item->category_id)->exists()) {
+                $categoryId = (int) $item->category_id;
+                $matchedCategory = true;
+            } elseif (!empty($d['category'])) {
                 $match = Category::whereRaw('LOWER(name) = ?', [strtolower(trim($d['category']))])->first();
                 if ($match) {
                     $categoryId = $match->id;

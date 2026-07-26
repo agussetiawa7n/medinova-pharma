@@ -104,7 +104,12 @@ class AIProductService
 
     // ── TEXT GENERATION ──
 
-    public function generateProductDetails(string $productName): array
+    /**
+     * @param string|null $forcedCategory Category the admin pinned for this
+     *        batch. When given, the model is told to use exactly that name
+     *        instead of picking one from the whole list.
+     */
+    public function generateProductDetails(string $productName, ?string $forcedCategory = null): array
     {
         set_time_limit(120);
 
@@ -151,7 +156,7 @@ SYS;
             'response_format' => ['type' => 'json_object'],
             'messages'    => [
                 ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user',   'content' => $this->buildTextPrompt($productName)],
+                ['role' => 'user',   'content' => $this->buildTextPrompt($productName, $forcedCategory)],
             ],
         ]);
 
@@ -292,10 +297,29 @@ Return this exact JSON structure:
 PROMPT;
     }
 
-    private function buildTextPrompt(string $productName): string
+    private function buildTextPrompt(string $productName, ?string $forcedCategory = null): string
     {
-        $categories = Category::pluck('name')->implode(', ');
-        $brands     = Brand::pluck('name')->implode(', ');
+        $brands = Brand::pluck('name')->implode(', ');
+
+        // A pinned category is a decision the admin already made, so the model
+        // is told the answer rather than asked to choose. Sending the full
+        // category list in that case would only invite it to pick something
+        // else — and it costs tokens the description needs.
+        $forcedCategory = trim((string) $forcedCategory);
+
+        if ($forcedCategory !== '') {
+            $categoryRule = "- Category: this product has ALREADY been assigned to \"{$forcedCategory}\" by the store admin. "
+                . "Return EXACTLY \"{$forcedCategory}\" in the category field — never a different or invented name. "
+                . "Write the description so it reads naturally for a product in this category.";
+        } else {
+            $categories = Category::pluck('name')->implode(', ');
+            $categoryRule = "- Category: MUST be EXACTLY one of these existing categories: [{$categories}]. "
+                . 'Match the closest one. If truly none fit, return an EMPTY string "" for category — do NOT invent a new category name.';
+        }
+
+        $categoryJsonHint = $forcedCategory !== ''
+            ? $forcedCategory
+            : 'exact match from the category list above, or an empty string';
 
         return <<<PROMPT
 Generate accurate pharmaceutical product data for: "{$productName}"
@@ -305,7 +329,7 @@ IMPORTANT INSTRUCTIONS:
 - Identify the REAL manufacturer by searching the web. Do NOT guess.
 - The composition must be the ACTUAL active ingredient(s) for this specific product.
 - Price in USD (realistic US pharmacy price).
-- Category: MUST be EXACTLY one of these existing categories: [{$categories}]. Match the closest one. If truly none fit, return an EMPTY string "" for category — do NOT invent a new category name.
+{$categoryRule}
 - Brand MUST be one of: [{$brands}]. If no match, use the closest or the brand extracted from the product name.
 - SKU format: MED-{first 3 letters of brand}-{strength numbers}, e.g., MED-MAL-100
 
@@ -326,7 +350,7 @@ Return this exact JSON structure:
 "description":"<h2>About {$productName}</h2><p>2-3 sentence opening naming {$productName}, its active ingredient with strength, its drug class and what it treats.</p><p>A second short paragraph on who it is typically prescribed for and what a patient can realistically expect.</p><h3>Quick Facts</h3><table><tbody><tr><th>Active Ingredient</th><td>salt with strength</td></tr><tr><th>Drug Class</th><td>pharmacological class</td></tr><tr><th>Manufacturer</th><td>real manufacturer</td></tr><tr><th>Form &amp; Pack</th><td>e.g. Tablet, strip of 10</td></tr><tr><th>Prescription</th><td>Required / Not required</td></tr></tbody></table><h3>Key Benefits</h3><ul><li><strong>Short benefit label</strong> — one clear supporting sentence.</li><li><strong>Second benefit</strong> — supporting sentence.</li><li><strong>Third benefit</strong> — supporting sentence.</li><li><strong>Fourth benefit</strong> — supporting sentence.</li></ul><h3>What {$productName} Is Used For</h3><p>One short lead-in sentence.</p><ul><li>primary approved indication</li><li>second indication</li><li>third indication</li></ul><h3>How to Take {$productName}</h3><p>General guidance on timing, food and water — educational only, never a personal dose recommendation.</p><ul><li>When to take it (with or without food, time of day)</li><li>How to swallow it (whole with water, do not crush/chew if applicable)</li><li>How long a typical course runs and why it should be completed</li></ul><h3>Missed Dose &amp; Overdose</h3><ul><li><strong>Missed dose:</strong> what to do, and the reminder never to double up.</li><li><strong>Overdose:</strong> advice to contact a doctor or emergency services immediately.</li></ul><h3>Storage &amp; Handling</h3><p>Specific storage temperature, light and moisture guidance, plus keeping it out of reach of children.</p>",
 "price":float_USD,
 "compare_price":float_slightly_higher_than_price_USD,
-"category":"matched or accurately created category",
+"category":"{$categoryJsonHint}",
 "brand":"exact match from brand list above or extracted from product name",
 "tags":["relevant","medical","tags"],
 "composition":"Exact active ingredient(s) with strength (e.g., Sildenafil Citrate 100mg)",
