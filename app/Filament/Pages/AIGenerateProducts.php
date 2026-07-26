@@ -743,15 +743,41 @@ class AIGenerateProducts extends Page
             return;
         }
 
-        $approved = AIProductQueue::whereIn('status', ['completed', 'text_generated'])
+        // Only fully finished items. Accepting 'text_generated' here is why
+        // products kept landing without a picture: the image step had not run
+        // yet, so thumbnail was null — and saving flipped the row to 'saved',
+        // which GenerateProductImageJob treats as done, so the image was never
+        // generated at all. Categories have no image step and complete directly.
+        $pendingImage = AIProductQueue::where('status', 'text_generated')
+            ->where('type', $this->generationType)
+            ->whereIn('product_name', $this->parsedNames)
+            ->whereNotNull('approved_by')
+            ->pluck('product_name');
+
+        $approved = AIProductQueue::where('status', 'completed')
                                    ->where('type', $this->generationType)
                                    ->whereIn('product_name', $this->parsedNames)
                                    ->whereNotNull('approved_by')
                                    ->get();
 
         if ($approved->isEmpty()) {
-            Notification::make()->title('No approved items to save.')->warning()->send();
+            Notification::make()
+                ->title('Nothing ready to save yet')
+                ->body($pendingImage->isNotEmpty()
+                    ? 'Still waiting on the image step for: ' . $pendingImage->implode(', ')
+                        . '. Approve them again once the card shows Done.'
+                    : 'Approve at least one finished item first.')
+                ->warning()
+                ->send();
             return;
+        }
+
+        if ($pendingImage->isNotEmpty()) {
+            Notification::make()
+                ->title("Holding back {$pendingImage->count()} item(s)")
+                ->body('Image still generating for: ' . $pendingImage->implode(', '))
+                ->info()
+                ->send();
         }
 
         $saved = 0;
@@ -787,7 +813,13 @@ class AIGenerateProducts extends Page
             return;
         }
 
+        $failures = [];
+
         foreach ($approved as $item) {
+          // One malformed AI payload used to take the whole Livewire request down
+          // with it — the admin saw Filament's "Error while loading page", nothing
+          // was saved, and no message said which item was at fault.
+          try {
             $d = $item->generated_data ?? [];
             $productName = $d['name'] ?? $item->product_name;
 
@@ -841,9 +873,18 @@ class AIGenerateProducts extends Page
                         ['name' => $saltName, 'content_status' => 'needs_review']
                     );
                     $compositionId = $composition->id;
-                    // Generate the salt page content only for brand-new compositions.
+
+                    // Salt-page content for a brand-new composition. dispatch()
+                    // pushed this onto the database queue, which nothing on this
+                    // plan consumes (no worker, proc_open disabled), so those
+                    // pages stayed permanently empty. Run it inline, and never
+                    // let its failure abort the product save.
                     if ($composition->wasRecentlyCreated) {
-                        GenerateCompositionContentJob::dispatch($composition->id);
+                        try {
+                            dispatch_sync(new GenerateCompositionContentJob($composition->id));
+                        } catch (\Throwable $e) {
+                            Log::warning("Composition content failed for '{$saltName}': " . $e->getMessage());
+                        }
                     }
                 }
             }
@@ -895,14 +936,52 @@ class AIGenerateProducts extends Page
 
             $item->update(['status' => 'saved']);
             $saved++;
+
+          } catch (\Throwable $e) {
+            Log::error("saveApproved failed for #{$item->id} [{$item->product_name}]: " . $e->getMessage());
+            $failures[$item->product_name] = $e->getMessage();
+
+            $item->update([
+                'status'        => 'failed',
+                'error_message' => 'Save failed: ' . Str::limit($e->getMessage(), 400),
+            ]);
+          }
         }
 
-        $msg = "{$saved} products saved.";
-        if ($skipped > 0) {
-            $msg .= " {$skipped} skipped (duplicates).";
+        // Report what actually happened. The old version always claimed success
+        // and then wiped the batch, so a partial save looked like a clean one.
+        if ($failures) {
+            $detail = collect($failures)
+                ->map(fn ($reason, $name) => "{$name}: " . Str::limit($reason, 120))
+                ->implode(' — ');
+
+            Notification::make()
+                ->title(sprintf('%d saved, %d failed', $saved, count($failures)))
+                ->body($detail . ' — failed items stay in the list, marked Failed.')
+                ->danger()
+                ->persistent()
+                ->send();
+        } else {
+            $msg = "{$saved} products saved.";
+            if ($skipped > 0) {
+                $msg .= " {$skipped} skipped (already in the catalogue).";
+            }
+            Notification::make()->title($msg)->success()->send();
         }
-        Notification::make()->title($msg)->success()->send();
-        $this->resetForm();
+
+        $this->refreshQueueItems();
+        $this->recountProgress();
+
+        // Clear the batch only when nothing is left needing attention, so a
+        // failed or image-pending item stays on screen to be dealt with.
+        $leftover = AIProductQueue::where('type', $this->generationType)
+            ->whereIn('product_name', $this->parsedNames)
+            ->where('status', '!=', 'saved')
+            ->exists();
+
+        if (!$leftover) {
+            $this->resetForm();
+        }
     }
 
     public function resetForm(): void

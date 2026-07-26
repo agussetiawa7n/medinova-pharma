@@ -18,12 +18,29 @@ class AIProductQueue extends Model
     /** Terminal states: kept as history, exempt from the live-row unique index. */
     private const TERMINAL_STATUSES = ['saved', 'skipped'];
 
+    private static ?bool $hasDedupeKey = null;
+
+    private static function supportsDedupeKey(): bool
+    {
+        return self::$hasDedupeKey ??= \Illuminate\Support\Facades\Schema::hasColumn(
+            (new static())->getTable(),
+            'dedupe_key'
+        );
+    }
+
     protected static function booted(): void
     {
         // Maintain the key the unique index is built on, so no caller has to
         // remember it. A live row is unique per (type, normalised name); once a
         // row reaches a terminal state it drops out of the constraint.
         $sync = function (self $item): void {
+            // Guarded: code can reach a server before its migration does, and
+            // writing to a column that is not there yet would turn every save,
+            // approve and status change into a 500 across the whole page.
+            if (!self::supportsDedupeKey()) {
+                return;
+            }
+
             $item->dedupe_key = in_array($item->status, self::TERMINAL_STATUSES, true)
                 ? null
                 : $item->type . ':' . mb_strtolower(trim((string) $item->product_name));

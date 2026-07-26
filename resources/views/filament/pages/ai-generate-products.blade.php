@@ -315,7 +315,15 @@
                     title="Remove this card from the batch."
                     style="padding:6px 12px; border-radius:8px; border:1px solid #fecaca; background:#fff; color:#dc2626; font-size:12px; cursor:pointer;">🗑 Remove</button>
 
-                @if($done)
+                @if($item['status'] === 'text_generated')
+                    {{-- Saving now would store the product with no picture and
+                         mark the row done, so the image step would never run.
+                         saveApproved() holds these back; say so up front. --}}
+                    <span title="The image is still being generated. Approve becomes available when this card shows Done."
+                        style="padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600; color:#7c3aed; background:#f5f3ff; border:1px solid #ddd6fe;">
+                        ⏳ Image pending…
+                    </span>
+                @elseif($done)
                     <button wire:click="approveProduct({{ $item['id'] }})" type="button" style="padding:6px 16px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; {{ $approved?'background:#22c55e; color:#fff; border:none;':'background:#fff; color:#16a34a; border:2px solid #4ade80;' }}">
                         {{ $approved?'✓ Approved':'Approve' }}
                     </button>
