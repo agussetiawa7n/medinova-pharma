@@ -17,8 +17,10 @@ class GenerateProductImageJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 2;
-    public array $backoff = [30, 60];
+    // NOTE: $tries/$backoff are Queue worker settings and never apply here —
+    // this plan has no worker, so every dispatch is dispatch_sync(). Retries
+    // are owned by AIQueueProcessor::MAX_ATTEMPTS. $timeout is kept only to
+    // document the intended ceiling; set_time_limit() below does the work.
     public int $timeout = 300;
 
     public function __construct(public readonly int $queueItemId) {}

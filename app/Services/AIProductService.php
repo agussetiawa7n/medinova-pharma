@@ -345,8 +345,9 @@ PROMPT;
             return null;
         }
 
-        set_time_limit(300);
-
+        // No set_time_limit() here. The caller sets the ceiling with the host
+        // limit in mind (280s against a 300s cap); raising it from inside the
+        // pipeline only undid that.
         $slug    = Str::slug($productName);
         $tempDir = str_replace('\\', '/', storage_path('app/temp'));
         if (!is_dir($tempDir)) {
@@ -488,11 +489,6 @@ PROMPT;
         }
 
         return array_values(array_unique($products));
-    }
-
-    private function placeholderImage(string $productName): string
-    {
-        return 'https://placehold.co/1024x1024/ffffff/333333.png?text=' . urlencode($productName);
     }
 
     private function parseJson(string $content): array

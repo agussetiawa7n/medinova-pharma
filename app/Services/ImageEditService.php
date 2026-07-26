@@ -105,7 +105,7 @@ class ImageEditService
                 return null;
             }
 
-            $rawPath = "{$tempDir}/{$slug}_raw.png";
+            $rawPath = "{$tempDir}/{$slug}_raw_" . bin2hex(random_bytes(4)) . ".png";
             $imgContent = Http::timeout(30)->get($url)->body();
             file_put_contents($rawPath, $imgContent);
 
@@ -129,7 +129,7 @@ class ImageEditService
     private function preprocess(string $inputPath, string $slug, string $tempDir): ?string
     {
         try {
-            $outputPath = "{$tempDir}/{$slug}-preprocessed.jpg";
+            $outputPath = "{$tempDir}/{$slug}-preprocessed-" . bin2hex(random_bytes(4)) . ".jpg";
             $manager    = ImageManager::usingDriver(GdDriver::class);
 
             // Intervention Image v4: scaleDown then save (format auto-detected from extension)
@@ -188,7 +188,7 @@ class ImageEditService
                 return null;
             }
 
-            $rawPath = "{$tempDir}/{$slug}_raw.png";
+            $rawPath = "{$tempDir}/{$slug}_raw_" . bin2hex(random_bytes(4)) . ".png";
             $imgContent = Http::timeout(30)->get($url)->body();
             file_put_contents($rawPath, $imgContent);
 

@@ -19,7 +19,7 @@ class ImageProcessingService
     {
         $slug    = Str::slug($productName);
         $ext     = 'png';
-        $rawPath = str_replace('\\', '/', storage_path("app/temp/{$slug}_raw.png"));
+        $rawPath = str_replace('\\', '/', storage_path("app/temp/{$slug}_dl_" . bin2hex(random_bytes(4)) . ".png"));
 
         $tempDir = str_replace('\\', '/', storage_path('app/temp'));
         if (!is_dir($tempDir)) {

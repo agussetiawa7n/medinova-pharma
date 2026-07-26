@@ -413,22 +413,22 @@
                         );
                     @endphp
                     @if(trim(strip_tags($bodyHtml)) !== '')
-                        {!! strip_tags($bodyHtml, $allowedTags) !!}
+                        {!! \App\Support\HtmlSanitizer::clean($bodyHtml) !!}
                     @else
                         <p class="text-muted">No detailed description available.</p>
                     @endif
 
                     @if($product->how_it_works)
                         <h3 class="mt-4">How it works</h3>
-                        {!! strip_tags($product->how_it_works, $allowedTags) !!}
+                        {!! \App\Support\HtmlSanitizer::clean($product->how_it_works) !!}
                     @endif
                     @if($product->side_effects)
                         <h3 class="mt-4">Side effects</h3>
-                        {!! strip_tags($product->side_effects, $allowedTags) !!}
+                        {!! \App\Support\HtmlSanitizer::clean($product->side_effects) !!}
                     @endif
                     @if($product->contraindications)
                         <h3 class="mt-4">Who should not take this</h3>
-                        {!! strip_tags($product->contraindications, $allowedTags) !!}
+                        {!! \App\Support\HtmlSanitizer::clean($product->contraindications) !!}
                     @endif
                 </div>
             </div>

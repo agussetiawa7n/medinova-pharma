@@ -87,6 +87,14 @@ class AISettings extends Page
                     Forms\Components\TextInput::make('fal_api_key')->label('API Key')
                         ->password()->placeholder('Key ...')->required()
                         ->helperText('Stored securely. Not visible after save.'),
+                    \Filament\Schemas\Components\Actions::make([
+                        \Filament\Actions\Action::make('testImage')
+                            ->label('Test Image API')
+                            ->action('testImageConnection')
+                            ->icon('heroicon-o-photo')
+                            ->requiresConfirmation()
+                            ->modalDescription('This sends one real request to Fal.ai with the selected image model, so it consumes a small amount of credit.'),
+                    ]),
                 ]),
             Section::make('Image Search (SerpAPI)')
                 ->description('Search real pharma product images as reference for AI editing. Change API key anytime.')
@@ -178,6 +186,65 @@ class AISettings extends Page
             Notification::make()->title('Connected!')->body('DeepSeek API is working.')->success()->send();
         } catch (\Exception $e) {
             Notification::make()->title('Failed')->body($e->getMessage())->danger()->send();
+        }
+    }
+
+    /**
+     * There was no way to check the image credential, so a bad Fal.ai key only
+     * showed up as products quietly finishing with a grey placeholder. This
+     * exercises the exact call the pipeline makes and reports what came back.
+     */
+    public function testImageConnection(): void
+    {
+        $key = trim(Setting::get('ai.fal_api_key', config('services.fal.api_key', '')));
+
+        if ($key === '') {
+            Notification::make()
+                ->title('No Fal.ai key saved')
+                ->body('Enter a key and press Save Settings first — the test reads the stored value.')
+                ->warning()
+                ->send();
+            return;
+        }
+
+        $model = Setting::get('ai.image_model', 'gpt-image-1-mini');
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::connectTimeout(15)
+                ->timeout(120)
+                ->withHeaders([
+                    'Authorization' => 'Key ' . $key,
+                    'Content-Type'  => 'application/json',
+                ])
+                ->post('https://fal.run/fal-ai/' . $model, [
+                    'prompt'     => 'A plain white pharmaceutical box on a white background',
+                    'image_size' => '1024x1024',
+                ]);
+
+            if ($response->successful() && $response->json('images.0.url')) {
+                Notification::make()
+                    ->title('Image API working')
+                    ->body("Fal.ai responded with an image using \"{$model}\".")
+                    ->success()
+                    ->send();
+                return;
+            }
+
+            $hint = match ($response->status()) {
+                401, 403 => 'The key was rejected. Check it on fal.ai and confirm the account has credit.',
+                404      => "The model \"{$model}\" is not available to this account. Pick a different Image AI.",
+                429      => 'Rate limited by Fal.ai — try again shortly.',
+                default  => 'Unexpected response from Fal.ai.',
+            };
+
+            Notification::make()
+                ->title("Image API failed (HTTP {$response->status()})")
+                ->body($hint . ' ' . \Illuminate\Support\Str::limit($response->body(), 200))
+                ->danger()
+                ->send();
+
+        } catch (\Throwable $e) {
+            Notification::make()->title('Image API failed')->body($e->getMessage())->danger()->send();
         }
     }
 }

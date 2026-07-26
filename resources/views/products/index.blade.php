@@ -184,7 +184,7 @@
             @if($activeCategory && $activeCategory->description)
                 <div class="bg-white border rounded-3 p-3 p-md-4 mt-5"
                      style="line-height:1.8; color:#636363; font-size:14.5px;">
-                    {!! strip_tags($activeCategory->description, '<h1><h2><h3><h4><h5><h6><p><ul><ol><li><a><strong><b><em><i><br><hr><blockquote><span><div><table><thead><tbody><tr><th><td><img><sup><sub><code><pre>') !!}
+                    {!! \App\Support\HtmlSanitizer::clean($activeCategory->description) !!}
                 </div>
             @endif
         </main>

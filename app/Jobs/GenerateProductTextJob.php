@@ -15,8 +15,10 @@ class GenerateProductTextJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 2;
-    public array $backoff = [15, 30];
+    // NOTE: $tries/$backoff are Queue worker settings and never apply here —
+    // this plan has no worker, so every dispatch is dispatch_sync(). Retries
+    // are owned by AIQueueProcessor::MAX_ATTEMPTS. $timeout is kept only to
+    // document the intended ceiling; set_time_limit() below does the work.
     // YMYL content is large; DeepSeek generation can take 45–60s. Keep this well
     // above the service HTTP timeout (90s) so a real queue worker doesn't kill the
     // job mid-generation.

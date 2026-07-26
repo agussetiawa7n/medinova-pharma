@@ -65,27 +65,27 @@
             <div style="line-height:1.8; color:#636363;">
                 @if($composition->overview)
                     <h2 class="h4 fw-bold" style="color:#303030;">Overview</h2>
-                    {!! strip_tags($composition->overview, $allowedTags) !!}
+                    {!! \App\Support\HtmlSanitizer::clean($composition->overview) !!}
                 @endif
 
                 @if($composition->how_it_works)
                     <h2 class="h4 fw-bold mt-4" style="color:#303030;">How {{ $composition->name }} works</h2>
-                    {!! strip_tags($composition->how_it_works, $allowedTags) !!}
+                    {!! \App\Support\HtmlSanitizer::clean($composition->how_it_works) !!}
                 @endif
 
                 @if($composition->uses)
                     <h2 class="h4 fw-bold mt-4" style="color:#303030;">Uses</h2>
-                    {!! strip_tags($composition->uses, $allowedTags) !!}
+                    {!! \App\Support\HtmlSanitizer::clean($composition->uses) !!}
                 @endif
 
                 @if($composition->side_effects)
                     <h2 class="h4 fw-bold mt-4" style="color:#303030;">Side effects</h2>
-                    {!! strip_tags($composition->side_effects, $allowedTags) !!}
+                    {!! \App\Support\HtmlSanitizer::clean($composition->side_effects) !!}
                 @endif
 
                 @if($composition->precautions)
                     <h2 class="h4 fw-bold mt-4" style="color:#303030;">Precautions</h2>
-                    {!! strip_tags($composition->precautions, $allowedTags) !!}
+                    {!! \App\Support\HtmlSanitizer::clean($composition->precautions) !!}
                 @endif
 
                 @if(!$composition->overview && !$composition->how_it_works && !$composition->uses)

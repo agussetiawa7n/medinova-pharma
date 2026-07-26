@@ -204,12 +204,18 @@ class ImageSearchService
             return false;
         }
 
-        try {
-            [$width, $height] = getimagesize($path);
-            // Must be at least 300x300 (not 600 — some good images are smaller)
-            return $width >= 300 && $height >= 300;
-        } catch (\Exception $e) {
+        // getimagesize() returns false — it does not throw — for anything that
+        // is not a readable image, so the old try/catch never fired and the
+        // destructure quietly produced nulls.
+        $size = @getimagesize($path);
+
+        if ($size === false) {
             return false;
         }
+
+        [$width, $height] = $size;
+
+        // Must be at least 300x300 (not 600 — some good images are smaller)
+        return $width >= 300 && $height >= 300;
     }
 }

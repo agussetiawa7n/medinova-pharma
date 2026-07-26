@@ -139,7 +139,7 @@
     {{-- 10s, not 5s: each poll now performs a generation step that can run for
          minutes, and shared hosting has a small pool of PHP entry processes.
          Polling too fast just queues up requests that block on the DB lock. --}}
-    <div wire:poll.10000ms="pollStatus" wire:key="progress-bar" style="margin-bottom:24px;">
+    <div @if($isGenerating) wire:poll.10000ms="pollStatus" @endif wire:key="progress-bar" style="margin-bottom:24px;">
 
         {{-- Worker Status Panel --}}
         <div style="border-radius:12px; overflow:hidden; border:1px solid #e5e7eb; margin-bottom:12px;">

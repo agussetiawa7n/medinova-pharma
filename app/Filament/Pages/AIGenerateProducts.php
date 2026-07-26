@@ -135,6 +135,11 @@ class AIGenerateProducts extends Page
         try {
             $service = app(\App\Services\AIProductService::class);
 
+            // Start clean. Previously only the textarea branch reassigned, so
+            // parsing a file twice — or a file after an earlier parse — appended
+            // to the list that was already there.
+            $this->parsedNames = [];
+
             if (!empty($this->rawProductList)) {
                 $this->parsedNames = $service->parseProductList($this->rawProductList);
             }
@@ -656,8 +661,18 @@ class AIGenerateProducts extends Page
 
     public function saveApproved(): void
     {
+        // Scoped to the batch on screen. Without this the query picked up every
+        // approved row of this type — including leftovers from an earlier
+        // session the admin could not see — so "Save 2 Products" could write
+        // three, and resetForm() then cleared the evidence.
+        if (empty($this->parsedNames)) {
+            Notification::make()->title('No batch loaded to save.')->warning()->send();
+            return;
+        }
+
         $approved = AIProductQueue::whereIn('status', ['completed', 'text_generated'])
                                    ->where('type', $this->generationType)
+                                   ->whereIn('product_name', $this->parsedNames)
                                    ->whereNotNull('approved_by')
                                    ->get();
 
@@ -703,8 +718,8 @@ class AIGenerateProducts extends Page
             $d = $item->generated_data ?? [];
             $productName = $d['name'] ?? $item->product_name;
 
-            // Skip duplicates
-            if (Product::where('name', $productName)->exists()) {
+            // Case-insensitive so "Iverheal 6" and "iverheal 6" are one product.
+            if (Product::whereRaw('LOWER(name) = ?', [mb_strtolower(trim($productName))])->exists()) {
                 $item->update(['status' => 'skipped']);
                 $skipped++;
                 continue;
@@ -734,14 +749,11 @@ class AIGenerateProducts extends Page
                 }
             }
 
-            // Auto-create brand if missing
-            $brandId = null;
-            if (!empty($d['brand'])) {
-                $brandId = Brand::firstOrCreate(
-                    ['name' => $d['brand']],
-                    ['slug' => Str::slug($d['brand'])]
-                )->id;
-            }
+            // Brands cannot be pre-seeded the way categories are, so a genuinely
+            // new one is still created — but the raw value is normalised and
+            // matched case-insensitively first, so "iverheal", "Iverheal 6mg"
+            // and "Unknown" no longer each become their own Brand row.
+            $brandId = Brand::resolveFromAi($d['brand'] ?? null)?->id;
 
             // Link (and auto-create) the composition / salt page.
             // "Tadalafil 5mg" → salt "Tadalafil". Combination drugs ("A + B") are
