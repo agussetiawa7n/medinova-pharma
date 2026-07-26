@@ -830,12 +830,31 @@ class AIGenerateProducts extends Page
                 continue;
             }
 
-            // Unique slug
+            // Unique slug.
+            // withTrashed(): the unique index covers soft-deleted rows too, so a
+            // plain exists() reported "free" for a slug that would still collide.
             $slug = Str::slug($productName);
             $originalSlug = $slug;
             $counter = 1;
-            while (Product::where('slug', $slug)->exists()) {
+            while (Product::withTrashed()->where('slug', $slug)->exists()) {
                 $slug = $originalSlug . '-' . $counter++;
+            }
+
+            // Unique SKU. products.sku is unique as well, and the model derives
+            // the same code for different products — "Iverheal 3" and
+            // "Iverhuman 3" both produce MED-IVE-3 — which aborted the entire
+            // save with "Duplicate entry 'MED-IVE-3' for key products_sku_unique".
+            // An empty SKU becomes NULL: a unique index allows many NULLs but
+            // only one empty string.
+            $sku = trim((string) ($d['sku'] ?? ''));
+            if ($sku === '') {
+                $sku = null;
+            } else {
+                $originalSku = $sku;
+                $skuCounter  = 2;
+                while (Product::withTrashed()->where('sku', $sku)->exists()) {
+                    $sku = $originalSku . '-' . $skuCounter++;
+                }
             }
 
             // Category whitelist: only match an EXISTING category. Never auto-create
@@ -907,7 +926,7 @@ class AIGenerateProducts extends Page
                 'description'           => $d['description'] ?? '',
                 'price'                 => $d['price'] ?? 0,
                 'compare_price'         => $d['compare_price'] ?? null,
-                'sku'                   => $d['sku'] ?? null,
+                'sku'                   => $sku,
                 'category_id'           => $categoryId,
                 'composition_id'        => $compositionId,
                 'brand_id'              => $brandId,

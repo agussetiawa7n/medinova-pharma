@@ -81,7 +81,7 @@ class ImageEditService
 
         try {
             $response = Http::connectTimeout(15)
-                ->timeout(180)
+                ->timeout(110)
                 ->withHeaders([
                     'Authorization' => 'Key ' . $this->apiKey(),
                     'Content-Type'  => 'application/json',
@@ -163,7 +163,7 @@ class ImageEditService
             Log::info("ImageEdit: Trying fal.ai edit endpoint for [{$productName}] using {$model}/edit");
 
             $response = Http::connectTimeout(15)
-                ->timeout(200)
+                ->timeout(110)
                 ->withHeaders([
                     'Authorization' => 'Key ' . $this->apiKey(),
                     'Content-Type'  => 'application/json',

@@ -70,9 +70,11 @@ class ImageSearchService
             return null;
         }
 
-        // Try downloading top 3 candidates, return first valid one
+        // Two candidates, not three. The whole image step shares one request against
+        // a 300s host cap, and 20s downloads plus a 200s Fal call could exceed it —
+        // the request was killed mid-flight and the row left stuck in `generating`.
         $downloaded = [];
-        foreach (array_slice($candidates, 0, 3) as $index => $url) {
+        foreach (array_slice($candidates, 0, 2) as $index => $url) {
             $path = $this->downloadImage($url, $tempDir, $slug, $index);
             if ($path) {
                 $downloaded[] = $path;
@@ -174,7 +176,7 @@ class ImageSearchService
     private function downloadImage(string $url, string $tempDir, string $slug, int $index): ?string
     {
         try {
-            $response = Http::timeout(20)->get($url);
+            $response = Http::timeout(12)->get($url);
 
             if (!$response->successful()) {
                 return null;
