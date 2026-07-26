@@ -202,22 +202,30 @@ class AIGenerateProducts extends Page
             ->whereNull('approved_by')
             ->delete();
 
-        // ...which is exactly why an approved row must also block a re-generate.
-        // Without this the delete above skipped it and a second row was created
-        // for the same name, so the product appeared twice with two different
-        // AI results and two API calls were paid for.
-        $alreadyApproved = AIProductQueue::whereIn('product_name', $this->parsedNames)
+        // ...which is exactly why an approved row must also block a re-generate:
+        // the delete above skips it, so without this a second row appeared for
+        // the same name and the product was generated (and billed) twice.
+        //
+        // Only LIVE approved rows count. A row that was already saved to the
+        // catalogue — or skipped — is history and must not block anything;
+        // scoping this to approved_by alone meant a name could never be
+        // generated again once it had been saved, even after the admin cleared
+        // every visible card. Creating a duplicate Product is separately
+        // prevented by the name check in saveApproved().
+        $blocking = AIProductQueue::whereIn('product_name', $this->parsedNames)
             ->where('type', $this->generationType)
             ->whereNotNull('approved_by')
+            ->whereNotIn('status', ['saved', 'skipped'])
             ->pluck('product_name')
             ->all();
 
-        $toGenerate = array_values(array_diff($this->parsedNames, $alreadyApproved));
+        $toGenerate = array_values(array_diff($this->parsedNames, $blocking));
 
         if (empty($toGenerate)) {
             Notification::make()
                 ->title('Nothing to generate')
-                ->body('Every name in this batch is already generated and approved. Use "Regenerate" on a card to redo one.')
+                ->body('These are already generated and waiting to be saved: ' . implode(', ', $blocking)
+                     . '. Save or remove those cards first, or use "🔄 Text" on one to redo it.')
                 ->warning()
                 ->send();
             return;
@@ -231,10 +239,10 @@ class AIGenerateProducts extends Page
             ]);
         }
 
-        if ($skipped = count($alreadyApproved)) {
+        if ($skipped = count($blocking)) {
             Notification::make()
-                ->title("Skipped {$skipped} already-approved item(s)")
-                ->body(implode(', ', $alreadyApproved))
+                ->title("Skipped {$skipped} item(s) awaiting save")
+                ->body(implode(', ', $blocking))
                 ->info()
                 ->send();
         }
