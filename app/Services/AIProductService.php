@@ -471,7 +471,7 @@ PROMPT;
 
     private function placeholderImage(string $productName): string
     {
-        return 'https://placehold.co/1024x1024/ffffff/333333?text=' . urlencode($productName);
+        return 'https://placehold.co/1024x1024/ffffff/333333.png?text=' . urlencode($productName);
     }
 
     private function parseJson(string $content): array

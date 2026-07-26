@@ -27,20 +27,27 @@ class ImageProcessingService
         }
 
         if (filter_var($imageSource, FILTER_VALIDATE_URL)) {
-            $rawContent = Http::timeout(60)->get($imageSource)->body();
-            file_put_contents($rawPath, $rawContent);
+            $response = Http::timeout(60)->get($imageSource);
+
+            // Without this check an error page (403/404 HTML, a JSON error body)
+            // was written straight into {slug}_raw.png and only blew up later as
+            // Intervention's opaque "File contains unsupported image format".
+            if (!$response->successful()) {
+                throw new \RuntimeException(
+                    "Image download failed: HTTP {$response->status()} from {$imageSource}"
+                );
+            }
+
+            file_put_contents($rawPath, $response->body());
         } else {
             $rawPath = $imageSource;
-            // Detect SVG files from file extension or content
-            if (str_ends_with($rawPath, '.svg')) {
-                $ext = 'svg';
-            } elseif (file_exists($rawPath)) {
-                $head = file_get_contents($rawPath, false, null, 0, 100);
-                if (str_starts_with(trim($head), '<svg')) {
-                    $ext = 'svg';
-                }
-            }
         }
+
+        // Sniff whatever we ended up with, no matter where it came from. The
+        // detection used to run only for local files, so a downloaded SVG — the
+        // placeholder service returns SVG unless an extension is given — reached
+        // the GD driver, which cannot decode it.
+        $ext = $this->detectFormat($rawPath, $imageSource);
 
         $outputDir = str_replace('\\', '/', storage_path("app/public/products/{$slug}"));
         if (!is_dir($outputDir)) {
@@ -66,6 +73,37 @@ class ImageProcessingService
         }
 
         return "products/{$slug}/{$slug}_large.webp";
+    }
+
+    /**
+     * Work out what we actually downloaded by looking at the bytes, and fail
+     * with a message that names the problem instead of letting the image
+     * library report a generic decode error three retries later.
+     */
+    private function detectFormat(string $path, string $source): string
+    {
+        if (!file_exists($path) || filesize($path) === 0) {
+            throw new \RuntimeException("Image source produced an empty file: {$source}");
+        }
+
+        $head = (string) file_get_contents($path, false, null, 0, 512);
+
+        if (str_ends_with(strtolower($path), '.svg')
+            || str_contains($head, '<svg')
+            || str_starts_with(ltrim($head), '<?xml')) {
+            return 'svg';
+        }
+
+        // getimagesize() returns false for anything GD cannot read, which is
+        // precisely the set of inputs that used to reach ->decode() and throw.
+        if (@getimagesize($path) === false) {
+            $preview = trim(preg_replace('/\s+/', ' ', substr($head, 0, 120)));
+            throw new \RuntimeException(
+                "Downloaded file is not a readable image (starts with: \"{$preview}\") from {$source}"
+            );
+        }
+
+        return 'png';
     }
 
     private function saveSize(string $rawPath, string $outputDir, string $slug, string $sizeName, int $pixels): void
@@ -94,7 +132,7 @@ class ImageProcessingService
         $aiService = app(AIProductService::class);
         $rawUrl    = $aiService->generateImage($queueItem->product_name);
         if (!$rawUrl) {
-            $rawUrl = "https://placehold.co/1024x1024/ffffff/333333?text=" . urlencode($queueItem->product_name);
+            $rawUrl = "https://placehold.co/1024x1024/ffffff/333333.png?text=" . urlencode($queueItem->product_name);
         }
         $finalPath = $this->processAndSave($rawUrl, $queueItem->product_name);
         $queueItem->update(['image_path' => $finalPath, 'image_raw_url' => $rawUrl]);

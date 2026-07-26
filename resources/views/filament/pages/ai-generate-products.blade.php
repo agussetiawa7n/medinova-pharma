@@ -291,6 +291,14 @@
         @elseif($item['status']==='failed')
         <div style="margin:0 20px 20px; padding:16px; background:#fef2f2; border-radius:12px; font-size:13px; color:#dc2626; word-break:break-word; max-height:120px; overflow:auto;">{{ $item['error_message']??'Unknown error' }}</div>
         @elseif($done)
+        {{-- An image failure still completes the item so the text is not lost, but
+             the reason used to be stored and never shown — the admin just saw
+             "Done" with no picture and nothing to act on. --}}
+        @if(!empty($item['error_message']))
+        <div style="margin:16px 20px 0; padding:12px 16px; background:#fffbeb; border:1px solid #fde68a; border-radius:10px; font-size:12.5px; color:#b45309; word-break:break-word;">
+            <strong>Image warning:</strong> {{ $item['error_message'] }}
+        </div>
+        @endif
         @if($generationType === 'category')
         <div style="display:flex; gap:16px; padding:20px; border-top:1px solid #f3f4f6;">
             <div style="flex:1; display:grid; grid-template-columns:1fr 1fr; gap:16px;">

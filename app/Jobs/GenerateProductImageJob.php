@@ -42,7 +42,7 @@ class GenerateProductImageJob implements ShouldQueue
             }
 
             // Use AI image, or placeholder fallback
-            $placeholderUrl = "https://placehold.co/800x800/ffffff/333333?text=" . urlencode($item->product_name);
+            $placeholderUrl = "https://placehold.co/800x800/ffffff/333333.png?text=" . urlencode($item->product_name);
             $imageSource = $rawImage ?: $placeholderUrl;
             $finalPath = $imageService->processAndSave($imageSource, $item->product_name);
 
