@@ -56,31 +56,8 @@ class AIGenerateProducts extends Page
 
     public function mount(): void
     {
-        // Restore state after page refresh — load queue items from DB
-        $existing = AIProductQueue::whereNull('approved_by')
-            ->whereIn('status', ['pending', 'generating', 'text_generated', 'completed', 'failed'])
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        if ($existing->isNotEmpty()) {
-            // Restore correct type based on active items
-            $this->generationType = $existing->first()->type ?? 'product';
-            
-            $filtered = $existing->where('type', $this->generationType);
-            if ($filtered->isNotEmpty()) {
-                $this->parsedNames = $filtered->pluck('product_name')->unique()->values()->toArray();
-                $this->currentStep = 2;
-                $this->totalCount  = count($this->parsedNames);
-                $this->refreshQueueItems();
-
-                $hasActive = $filtered->whereIn('status', ['pending', 'generating', 'text_generated'])->isNotEmpty();
-                $hasFullyDone = $filtered->whereIn('status', ['completed', 'failed', 'skipped', 'saved'])->count();
-                if ($hasActive && $hasFullyDone < $this->totalCount) {
-                    $this->isGenerating = true;
-                }
-                $this->completedCount = $hasFullyDone;
-            }
-        }
+        // Restore state after a page refresh — the batch lives in the database.
+        $this->restoreBatch();
     }
 
     public function updatedGenerationType($value): void
@@ -96,25 +73,48 @@ class AIGenerateProducts extends Page
         $this->isGenerating = false;
         $this->currentStep = 1;
 
-        $existing = AIProductQueue::whereNull('approved_by')
-            ->where('type', $value)
-            ->whereIn('status', ['pending', 'generating', 'text_generated', 'completed', 'failed'])
-            ->orderBy('created_at', 'desc')
+        $this->restoreBatch($value);
+    }
+
+    /**
+     * Rebuild the on-screen batch from the database.
+     *
+     * Restores every row that has not reached a terminal state, INCLUDING ones
+     * the admin already approved. Both callers used to filter on
+     * whereNull('approved_by'), which meant an approved-but-unsaved row was
+     * never put back into $parsedNames and therefore never rendered — while
+     * generateAll() still refused to re-run that name because of it. The card
+     * was invisible and the block was unexplainable. Approved rows are exactly
+     * the ones waiting for "Save to Database", so they belong on screen.
+     */
+    private function restoreBatch(?string $type = null): void
+    {
+        $rows = AIProductQueue::query()
+            ->whereNotIn('status', ['saved', 'skipped'])
+            ->when($type, fn ($q) => $q->where('type', $type))
+            ->orderByDesc('created_at')
             ->get();
 
-        if ($existing->isNotEmpty()) {
-            $this->parsedNames = $existing->pluck('product_name')->unique()->values()->toArray();
-            $this->currentStep = 2;
-            $this->totalCount  = count($this->parsedNames);
-            $this->refreshQueueItems();
-
-            $hasActive = $existing->whereIn('status', ['pending', 'generating', 'text_generated'])->isNotEmpty();
-            $hasFullyDone = $existing->whereIn('status', ['completed', 'failed', 'skipped', 'saved'])->count();
-            if ($hasActive && $hasFullyDone < $this->totalCount) {
-                $this->isGenerating = true;
-            }
-            $this->completedCount = $hasFullyDone;
+        if ($rows->isEmpty()) {
+            return;
         }
+
+        $this->generationType = $type ?? ($rows->first()->type ?? 'product');
+
+        $rows = $rows->where('type', $this->generationType);
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $this->parsedNames = $rows->pluck('product_name')->unique()->values()->all();
+        $this->currentStep = 2;
+
+        $this->refreshQueueItems();
+        $this->recountProgress();
+
+        $this->isGenerating = $rows
+            ->whereIn('status', ['pending', 'generating', 'text_generated'])
+            ->isNotEmpty();
     }
 
     public function loadExistingCategories(): void
