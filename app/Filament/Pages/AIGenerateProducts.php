@@ -524,12 +524,77 @@ class AIGenerateProducts extends Page
         $this->refreshQueueItems();
     }
 
+    /** Put one failed card back in the queue with a clean attempt counter. */
+    public function retryItem(int $queueId): void
+    {
+        $item = AIProductQueue::findOrFail($queueId);
+
+        $item->update([
+            'status'        => 'pending',
+            'locked_at'     => null,
+            'retry_count'   => 0,
+            'error_message' => null,
+        ]);
+
+        $this->isGenerating = true;
+        $this->refreshQueueItems();
+        $this->recountProgress();
+
+        Notification::make()
+            ->title("Re-queued \"{$item->product_name}\"")
+            ->body('It will be picked up on the next cycle.')
+            ->success()
+            ->send();
+    }
+
+    /** Delete every failed card in this batch in one go. */
+    public function removeFailed(): void
+    {
+        $names = AIProductQueue::where('type', $this->generationType)
+            ->whereIn('product_name', $this->parsedNames)
+            ->where('status', 'failed')
+            ->pluck('product_name');
+
+        if ($names->isEmpty()) {
+            Notification::make()->title('No failed items to remove.')->info()->send();
+            return;
+        }
+
+        AIProductQueue::where('type', $this->generationType)
+            ->whereIn('product_name', $this->parsedNames)
+            ->where('status', 'failed')
+            ->delete();
+
+        // Keep the name list in step, otherwise refreshQueueItems() still filters
+        // on names that no longer have a row and the counters drift.
+        $this->parsedNames = array_values(array_diff($this->parsedNames, $names->all()));
+
+        $this->refreshQueueItems();
+        $this->recountProgress();
+
+        Notification::make()
+            ->title("Removed {$names->count()} failed item(s)")
+            ->body($names->implode(', '))
+            ->success()
+            ->send();
+    }
+
     /** Remove a single card from the batch — useful for a duplicate or a dud. */
     public function deleteItem(int $queueId): void
     {
         $item = AIProductQueue::findOrFail($queueId);
         $name = $item->product_name;
         $item->delete();
+
+        // Drop the name from the batch only once no row is left for it, so
+        // removing one of two duplicates does not hide the survivor.
+        $stillHasRow = AIProductQueue::where('type', $this->generationType)
+            ->where('product_name', $name)
+            ->exists();
+
+        if (!$stillHasRow) {
+            $this->parsedNames = array_values(array_diff($this->parsedNames, [$name]));
+        }
 
         $this->refreshQueueItems();
         $this->recountProgress();

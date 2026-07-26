@@ -135,10 +135,19 @@
     @endif
 
     {{-- ═══ PROGRESS BAR + WORKER CONTROLS (shown during generation) ═══ --}}
-    @if($isGenerating)
-    {{-- 10s, not 5s: each poll now performs a generation step that can run for
-         minutes, and shared hosting has a small pool of PHP entry processes.
-         Polling too fast just queues up requests that block on the DB lock. --}}
+    @php
+        // The panel holds Clear Stuck / Remove Failed / Force Stop. Gating the
+        // whole thing on $isGenerating hid those controls the moment a batch
+        // stopped running — which is exactly when a failed or wedged item needs
+        // clearing. Show it whenever there is anything left to act on.
+        $needsAttention = collect($queueItems)
+            ->whereIn('status', ['failed', 'generating', 'pending', 'text_generated'])
+            ->isNotEmpty();
+    @endphp
+    @if($isGenerating || $needsAttention)
+    {{-- Poll only while a batch is actually running: each poll performs a
+         generation step that can take minutes, and shared hosting has a small
+         pool of PHP entry processes. --}}
     <div @if($isGenerating) wire:poll.10000ms="pollStatus" @endif wire:key="progress-bar" style="margin-bottom:24px;">
 
         {{-- Worker Status Panel --}}
@@ -190,6 +199,13 @@
                         style="padding:6px 14px; border-radius:8px; border:none; font-size:12px; font-weight:700; cursor:pointer; background:#fbbf24; color:#78350f;">
                         <span wire:loading.remove wire:target="clearStuck">🧹 Clear Stuck</span>
                         <span wire:loading wire:target="clearStuck">Cleaning…</span>
+                    </button>
+                    <button wire:click="removeFailed" wire:loading.attr="disabled" wire:target="removeFailed" type="button"
+                        onclick="return confirm('Delete every failed card in this batch?')"
+                        title="Delete all failed cards. Use Clear Stuck instead if you want them retried."
+                        style="padding:6px 14px; border-radius:8px; border:none; font-size:12px; font-weight:700; cursor:pointer; background:rgba(239,68,68,0.9); color:#fff;">
+                        <span wire:loading.remove wire:target="removeFailed">🗑 Remove Failed</span>
+                        <span wire:loading wire:target="removeFailed">Removing…</span>
                     </button>
                     <button wire:click="restartQueueWorker" type="button" style="padding:6px 14px; border-radius:8px; border:none; font-size:12px; font-weight:600; cursor:pointer; background:rgba(255,255,255,0.15); color:#fff; backdrop-filter:blur(4px);">
                         🔄 Restart
@@ -276,22 +292,35 @@
                     {{ $statusLabels[$item['status']] ?? ucfirst($item['status']) }}
                 </span>
             </div>
-            @if($done)
-            <div style="display:flex; gap:6px;">
-                <button wire:click="regenerateText({{ $item['id'] }})" type="button" style="padding:6px 12px; border-radius:8px; border:1px solid #e5e7eb; background:#fff; color:#6b7280; font-size:12px; cursor:pointer;">🔄 Text</button>
-                @if($generationType === 'product')
-                    <button wire:click="regenerateImage({{ $item['id'] }})" type="button" style="padding:6px 12px; border-radius:8px; border:1px solid #e5e7eb; background:#fff; color:#6b7280; font-size:12px; cursor:pointer;">🖼 Image</button>
+            {{-- Actions render in EVERY state. The whole row used to be gated on
+                 the $done flag, which excludes 'failed' — so a failed card showed
+                 no buttons at all and could not be retried or removed. --}}
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                @if($done)
+                    <button wire:click="regenerateText({{ $item['id'] }})" type="button" style="padding:6px 12px; border-radius:8px; border:1px solid #e5e7eb; background:#fff; color:#6b7280; font-size:12px; cursor:pointer;">🔄 Text</button>
+                    @if($generationType === 'product')
+                        <button wire:click="regenerateImage({{ $item['id'] }})" type="button" style="padding:6px 12px; border-radius:8px; border:1px solid #e5e7eb; background:#fff; color:#6b7280; font-size:12px; cursor:pointer;">🖼 Image</button>
+                    @endif
+                    <button wire:click="skipProduct({{ $item['id'] }})" type="button" style="padding:6px 12px; border-radius:8px; border:1px solid #e5e7eb; background:#fff; color:#9ca3af; font-size:12px; cursor:pointer;">Skip</button>
+                @elseif($item['status'] === 'failed')
+                    <button wire:click="retryItem({{ $item['id'] }})" wire:loading.attr="disabled" wire:target="retryItem({{ $item['id'] }})" type="button"
+                        style="padding:6px 12px; border-radius:8px; border:1px solid #bfdbfe; background:#fff; color:#2563eb; font-size:12px; font-weight:600; cursor:pointer;">
+                        <span wire:loading.remove wire:target="retryItem({{ $item['id'] }})">↻ Retry</span>
+                        <span wire:loading wire:target="retryItem({{ $item['id'] }})">Retrying…</span>
+                    </button>
                 @endif
-                <button wire:click="skipProduct({{ $item['id'] }})" type="button" style="padding:6px 12px; border-radius:8px; border:1px solid #e5e7eb; background:#fff; color:#9ca3af; font-size:12px; cursor:pointer;">Skip</button>
+
                 <button wire:click="deleteItem({{ $item['id'] }})" type="button"
-                    onclick="return confirm('Remove this card from the batch? The generated text is discarded.')"
-                    title="Remove this row — use it to drop a duplicate."
-                    style="padding:6px 12px; border-radius:8px; border:1px solid #fecaca; background:#fff; color:#dc2626; font-size:12px; cursor:pointer;">Remove</button>
-                <button wire:click="approveProduct({{ $item['id'] }})" type="button" style="padding:6px 16px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; {{ $approved?'background:#22c55e; color:#fff; border:none;':'background:#fff; color:#16a34a; border:2px solid #4ade80;' }}">
-                    {{ $approved?'✓ Approved':'Approve' }}
-                </button>
+                    onclick="return confirm('Remove &quot;{{ addslashes($item['product_name']) }}&quot; from the batch? Anything generated for it is discarded.')"
+                    title="Remove this card from the batch."
+                    style="padding:6px 12px; border-radius:8px; border:1px solid #fecaca; background:#fff; color:#dc2626; font-size:12px; cursor:pointer;">🗑 Remove</button>
+
+                @if($done)
+                    <button wire:click="approveProduct({{ $item['id'] }})" type="button" style="padding:6px 16px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; {{ $approved?'background:#22c55e; color:#fff; border:none;':'background:#fff; color:#16a34a; border:2px solid #4ade80;' }}">
+                        {{ $approved?'✓ Approved':'Approve' }}
+                    </button>
+                @endif
             </div>
-            @endif
         </div>
         @if(in_array($item['status'],['generating','pending']))
         <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 20px; color:#9ca3af; gap:12px;">
