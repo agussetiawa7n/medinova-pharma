@@ -381,7 +381,7 @@
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <input type="url" wire:model.defer="referenceUrls.{{ $item['id'] }}"
-                    placeholder="Paste the image URL from indiamart.com (right-click the photo → Copy image address)"
+                    placeholder="Paste an image URL — note: indiamart.com refuses our server, upload the file instead"
                     style="flex:1; min-width:260px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px;">
                 <button wire:click="useReferenceImage({{ $item['id'] }})" wire:loading.attr="disabled"
                     wire:target="useReferenceImage({{ $item['id'] }})" type="button"
@@ -390,6 +390,30 @@
                     <span wire:loading wire:target="useReferenceImage({{ $item['id'] }})">Working…</span>
                 </button>
             </div>
+            {{-- The upload is the only path a third party cannot block. IndiaMart's
+                 CDN answers this server with HTTP 444 whatever headers it sends
+                 (verified: 200 from a home connection, 444 from any datacenter),
+                 so pasting an IndiaMart URL above cannot work — but the same
+                 photo saved from the admin's own browser always does. --}}
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; padding-top:10px; border-top:1px dashed #cbd5e1;">
+                <label style="cursor:pointer; padding:8px 12px; border:2px dashed #cbd5e1; border-radius:8px; font-size:12.5px; color:#475569; display:inline-flex; align-items:center; gap:6px; background:#fff;">
+                    📁 Choose photo
+                    <input type="file" accept="image/jpeg,image/png,image/webp"
+                        wire:model="referenceFiles.{{ $item['id'] }}" style="display:none;">
+                </label>
+                <span wire:loading wire:target="referenceFiles.{{ $item['id'] }}" style="font-size:12px; color:#64748b;">Uploading…</span>
+                @if(!empty($referenceFiles[$item['id']]))
+                    <span style="font-size:12px; color:#16a34a; font-weight:600;">✓ {{ $referenceFiles[$item['id']]->getClientOriginalName() }}</span>
+                @endif
+                <button wire:click="useReferenceUpload({{ $item['id'] }})" wire:loading.attr="disabled"
+                    wire:target="useReferenceUpload({{ $item['id'] }})" type="button"
+                    style="padding:8px 16px; border-radius:8px; border:none; background:#0f172a; color:#fff; font-size:12.5px; font-weight:700; cursor:pointer;">
+                    <span wire:loading.remove wire:target="useReferenceUpload({{ $item['id'] }})">Use uploaded photo</span>
+                    <span wire:loading wire:target="useReferenceUpload({{ $item['id'] }})">Working…</span>
+                </button>
+                <span style="font-size:11.5px; color:#94a3b8;">JPG / PNG / WebP, up to 8 MB — works even when the site blocks our server.</span>
+            </div>
+
             @if(!empty($item['image_model_used']))
             <div style="margin-top:8px; font-size:11.5px; color:#64748b;">Source: {{ $item['image_model_used'] }}</div>
             @endif

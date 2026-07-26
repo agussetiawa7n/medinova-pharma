@@ -756,6 +756,84 @@ class AIGenerateProducts extends Page
     /** Reference photo URLs the admin typed, keyed by queue item id. */
     public array $referenceUrls = [];
 
+    /** Reference photos the admin uploaded, keyed by queue item id. */
+    public array $referenceFiles = [];
+
+    /**
+     * Upload the real product photo straight from the admin's computer.
+     *
+     * This exists because pasting a URL is not always enough. IndiaMart's CDN
+     * answers this server with HTTP 444 — nginx refusing the connection on IP
+     * reputation, which no header or retry can talk its way past (verified: the
+     * same URL returns 200 from a home connection and 444 from any datacenter).
+     * The admin's browser CAN fetch it, so the file comes in from their side
+     * instead. Nothing about this path can be blocked by a third party.
+     */
+    public function useReferenceUpload(int $queueId): void
+    {
+        $file = $this->referenceFiles[$queueId] ?? null;
+
+        if (!$file) {
+            Notification::make()->title('Choose a photo first.')->warning()->send();
+            return;
+        }
+
+        // Checked directly rather than through $this->validate(): a rule failure
+        // there throws past this action and the admin gets a red field with no
+        // explanation, on a page that has no form to attach the error to.
+        if (!in_array($file->getMimeType(), ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            Notification::make()
+                ->title('That file is not a usable photo')
+                ->body('Upload a JPG, PNG or WebP.')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        if ($file->getSize() > 8 * 1024 * 1024) {
+            Notification::make()
+                ->title('That photo is too large')
+                ->body('Keep it under 8 MB.')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $item = AIProductQueue::findOrFail($queueId);
+
+        // Kept outside the temp directory the pipeline cleans up, so the photo
+        // survives a "🖼 Image" retry instead of having to be uploaded again.
+        $dir = storage_path('app/ai-references');
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        // Copied by absolute path rather than ->storeAs(): the 'local' disk is
+        // rooted at storage/app/private, so a disk write would land somewhere
+        // other than the path recorded on the row.
+        $path = $dir . '/' . $queueId . '-' . bin2hex(random_bytes(4)) . '.'
+            . (strtolower($file->getClientOriginalExtension()) ?: 'jpg');
+
+        if (!@copy($file->getRealPath(), $path)) {
+            Notification::make()->title('Could not save the upload on the server.')->danger()->send();
+            return;
+        }
+
+        unset($this->referenceFiles[$queueId]);
+
+        $item->update([
+            'reference_url' => $path,
+            'status'        => 'text_generated',
+            'image_path'    => null,
+            'locked_at'     => null,
+            'error_message' => null,
+        ]);
+
+        $this->runSingleStep($item->fresh(), 'Image rebuilt from your upload');
+    }
+
     /**
      * Point one item at a specific product photo and rebuild its image from it.
      *

@@ -15,6 +15,9 @@ class ImageSearchService
     private ?string $lastError  = null;
     private ?string $lastSource = null;
 
+    /** HTTP status of the most recent download attempt, for dead-host tracking. */
+    private ?int $lastStatus = null;
+
     public function lastError(): ?string
     {
         return $this->lastError;
@@ -27,6 +30,36 @@ class ImageSearchService
 
     /** How many candidates to try downloading before giving up. */
     private const MAX_DOWNLOAD_ATTEMPTS = 5;
+
+    /**
+     * Hosts that refuse to serve a web server, whatever headers it sends.
+     *
+     * Measured, not assumed. The same IndiaMart CDN URL, same request:
+     *   from a home/office IP  → HTTP 200, 265 KB PNG
+     *   from a datacenter IP   → HTTP 444 (nginx closes without responding)
+     *
+     * 444 is an explicit nginx deny, and it fires on IP reputation rather than
+     * on User-Agent or Referer — a public image proxy (images.weserv.nl, also a
+     * datacenter) gets the same 444. Hostinger is a datacenter, so the origin
+     * URL can never be fetched from there and retrying it only burns attempts.
+     * The search engine's own copy of the photo is used instead; Google's CDN
+     * was verified to serve datacenter IPs normally.
+     */
+    private const SERVER_BLOCKED_HOSTS = [
+        'imimg.com',
+    ];
+
+    /** True when this host is known to reject fetches from a server. */
+    private function isServerBlocked(string $host): bool
+    {
+        foreach (self::SERVER_BLOCKED_HOSTS as $blocked) {
+            if (str_contains($host, $blocked)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /**
      * Trusted pharmaceutical image sources, MOST PREFERRED FIRST.
@@ -77,6 +110,13 @@ class ImageSearchService
         $this->lastError  = null;
         $this->lastSource = null;
 
+        // An admin upload is already on disk. This is the one path that always
+        // works: their browser can fetch IndiaMart even though this server
+        // cannot, so the file arrives here instead of being downloaded here.
+        if (!str_starts_with($url, 'http://') && !str_starts_with($url, 'https://')) {
+            return $this->copyLocalReference($url, $slug);
+        }
+
         if (!filter_var($url, FILTER_VALIDATE_URL)) {
             $this->lastError = 'That does not look like a valid image URL.';
             return null;
@@ -103,6 +143,42 @@ class ImageSearchService
         $this->lastSource = parse_url($url, PHP_URL_HOST) ?: $url;
 
         return $path;
+    }
+
+    /**
+     * Take an already-stored file (an admin upload) as the reference.
+     *
+     * Copied rather than used in place, because generateImage() deletes the
+     * reference when it is done and the stored upload must survive a retry.
+     */
+    private function copyLocalReference(string $path, string $slug): ?string
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            $this->lastError = 'The uploaded reference photo is no longer on the server. Upload it again.';
+            return null;
+        }
+
+        $tempDir = str_replace('\\', '/', storage_path('app/temp'));
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
+        $copy = "{$tempDir}/{$slug}-ref-upload.jpg";
+
+        if (!@copy($path, $copy)) {
+            $this->lastError = 'Could not read the uploaded reference photo.';
+            return null;
+        }
+
+        if (!$this->isValidImage($copy)) {
+            @unlink($copy);
+            $this->lastError = 'That upload is too small to use as a reference (needs to be at least 150x150).';
+            return null;
+        }
+
+        $this->lastSource = 'your upload';
+
+        return $copy;
     }
 
     /**
@@ -136,10 +212,25 @@ class ImageSearchService
         // downloads AND validates. The old version downloaded a fixed two and
         // then filtered, so if both happened to be blocked it gave up even
         // though good candidates were sitting further down the list.
+        // A host that has already slammed the door stays shut for the rest of
+        // this run. Without this, five IndiaMart URLs used up all five attempts
+        // on five identical 444s and the engine's own copy was never reached.
+        $deadHosts = [];
+
         foreach (array_slice($candidates, 0, self::MAX_DOWNLOAD_ATTEMPTS) as $index => $url) {
+            $host = (string) (parse_url($url, PHP_URL_HOST) ?? '');
+
+            if ($host !== '' && isset($deadHosts[$host])) {
+                continue;
+            }
+
             $path = $this->downloadImage($url, $tempDir, $slug, $index);
 
             if (!$path) {
+                if ($host !== '' && $this->lastStatus !== null && in_array($this->lastStatus, [403, 429, 444], true)) {
+                    $deadHosts[$host] = true;
+                }
+
                 continue;
             }
 
@@ -228,8 +319,21 @@ class ImageSearchService
                 // site and is the good one, but it is exactly what gets
                 // hotlink-blocked; 'thumbnail' is SerpAPI's own copy and always
                 // serves. Taking only one meant a blocked site dropped out.
+                $original  = $result['original'] ?? null;
+                $thumbnail = $result['thumbnail'] ?? null;
+
+                // IndiaMart's CDN answers a server with 444 no matter what, so
+                // its original URL is dead weight — putting it first meant every
+                // IndiaMart hit wasted a download attempt before the engine's
+                // own copy was even tried. Demote it behind the thumbnail.
+                $originalHost = (string) (parse_url((string) $original, PHP_URL_HOST) ?? '');
+
+                $ordered = ($original && $this->isServerBlocked($originalHost))
+                    ? [$thumbnail, $original]
+                    : [$original, $thumbnail];
+
                 $urls = array_values(array_filter(
-                    [$result['original'] ?? null, $result['thumbnail'] ?? null],
+                    $ordered,
                     fn ($u) => $u && filter_var($u, FILTER_VALIDATE_URL)
                 ));
 
@@ -241,7 +345,12 @@ class ImageSearchService
                 // always outranks the rest. Previously the trusted bucket kept
                 // Google's own ordering, which made the constant's order — and
                 // IndiaMart's place at the top of it — purely decorative.
-                $rank = $this->trustRank((string) (parse_url($urls[0], PHP_URL_HOST) ?? ''));
+                //
+                // Ranked on the ORIGINAL's host, never on $urls[0]: the source
+                // site is what makes a photo trustworthy, and for a blocked host
+                // $urls[0] is now the engine's thumbnail on a Google domain,
+                // which would otherwise score as untrusted and lose the ranking.
+                $rank = $this->trustRank($originalHost ?: (string) (parse_url($urls[0], PHP_URL_HOST) ?? ''));
 
                 foreach ($urls as $url) {
                     if ($rank !== null) {
@@ -293,6 +402,8 @@ class ImageSearchService
      */
     private function downloadImage(string $url, string $tempDir, string $slug, int $index): ?string
     {
+        $this->lastStatus = null;
+
         try {
             $response = Http::timeout(8)
                 ->withHeaders([
@@ -304,10 +415,21 @@ class ImageSearchService
                 ])
                 ->get($url);
 
+            $this->lastStatus = $response->status();
+
             if (!$response->successful()) {
-                $this->lastError = "Reference download returned HTTP {$response->status()} from "
-                    . (parse_url($url, PHP_URL_HOST) ?: $url);
+                $host = (string) (parse_url($url, PHP_URL_HOST) ?: $url);
+
+                // 444 is not "not found" — it is the site refusing to talk to a
+                // server at all. Saying so tells the admin the one thing that
+                // actually helps: no retry from here will ever succeed.
+                $this->lastError = $response->status() === 444 || $this->isServerBlocked($host)
+                    ? "{$host} blocks downloads from web servers (HTTP {$response->status()}). "
+                        . 'Save the photo on your own computer and upload it on this card instead.'
+                    : "Reference download returned HTTP {$response->status()} from {$host}";
+
                 Log::warning("ImageSearch download [{$index}] HTTP {$response->status()} for {$url}");
+
                 return null;
             }
 
@@ -361,10 +483,11 @@ class ImageSearchService
 
         [$width, $height] = $size;
 
-        // 200px, not 300. A search thumbnail of a real medicine box is a far
-        // better reference for the AI than no reference at all — without one it
-        // invents packaging from scratch, which is what produced the generic
-        // "dummy" boxes.
-        return $width >= 200 && $height >= 200;
+        // 150px, not 200. For sites that block server-side fetches the search
+        // engine's thumbnail is the ONLY copy we can get, and Google sizes those
+        // by aspect ratio — a wide box photo comes back around 260x195, which the
+        // old floor rejected. Losing the real box to a 5px shortfall is far worse
+        // than a slightly soft reference: without one the model invents packaging.
+        return $width >= 150 && $height >= 150;
     }
 }
